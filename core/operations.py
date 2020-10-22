@@ -173,8 +173,11 @@ class CharybdisOperations(Operations):
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
         ...
 
-    async def readlink(self, inode: INode, ctx: RequestContext) -> INode:
-        ...
+    async def readlink(self, inode: INode, ctx: RequestContext) -> bytes:
+        try:
+            return os.fsencode(os.readlink(self.paths[inode]))
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def release(self, fd: FileHandle) -> None:
         ...
