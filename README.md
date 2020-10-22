@@ -7,5 +7,5 @@ Create env:
 
 Install pre-requisites
 
-    pip3 install requirements.txt
+    pip3 install -r requirements.txt
   
