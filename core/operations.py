@@ -27,6 +27,10 @@ RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 
 
 class CharybdisOperations(Operations):
+    def __init__(self, source: str):
+        super().__init__()
+        self.source = source
+
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
         ...
 
