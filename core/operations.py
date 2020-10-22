@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional
+from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, cast
 from collections import Counter
 
 from pyfuse3 import \
@@ -151,7 +151,7 @@ class CharybdisOperations(Operations):
         return FileInfo(fh=fd)
 
     async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
-        ...
+        return cast(FileHandle, inode)
 
     async def read(self, fd: FileHandle, offset: int, length: int) -> bytes:
         ...
