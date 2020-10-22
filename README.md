@@ -7,5 +7,15 @@ Create env:
 
 Install pre-requisites
 
+
+Ubuntu 20.04
+
+    sudo apt install fuse3 libfuse3-dev
+
+CentOS 7
+
+    sudo yum install fuse3 fuse3-devel
+
+Install Python requirements 
+
     pip3 install -r requirements.txt
-  
