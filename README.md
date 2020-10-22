@@ -24,4 +24,5 @@ A remotely controlled fault injection file system.
     $ docker run -it --device /dev/fuse --privileged /bin/bash
     
 ## How to run a Docker container with mount propogation
-    $ docker run -it --device /dev/fuse --privileged --mount type=bind,source=/,target=/docker_host_root,bind-propagation=rshared charybdisfs /bin/bash
+    $ docker run -it --device /dev/fuse --privileged \
+        --mount type=bind,source=/,target=/docker_host_root,bind-propagation=rshared charybdisfs /bin/bash
