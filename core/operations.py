@@ -91,7 +91,7 @@ class CharybdisOperations(Operations):
         self.descriptors = FileDescriptorMapping()
 
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
-        ...
+        return os.access(self.paths[inode], mode=mode)
 
     async def create(self,
                      parent_inode: INode,
