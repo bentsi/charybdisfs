@@ -12,24 +12,83 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import NewType, List, Tuple, Literal, Sequence
+import os
+from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional
+from collections import Counter
 
 from pyfuse3 import \
-    Operations, RequestContext, EntryAttributes, SetattrFields, FileInfo, StatvfsData, ReaddirToken, \
-    RENAME_EXCHANGE, RENAME_NOREPLACE
+    Operations, RequestContext, EntryAttributes, SetattrFields, FileInfo, StatvfsData, ReaddirToken, FUSEError, \
+    RENAME_EXCHANGE, RENAME_NOREPLACE, ROOT_INODE
 
 
 INode = NewType("INode", int)
 INodeList = List[Tuple[INode, int]]
+FileDescriptor = NewType("FileDescriptor", int)
 FileHandle = NewType("FileHandle", int)
 FileMode = NewType("FileMode", int)
 RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 
 
+class PathMapping(Dict[INode, str]):
+    def __init__(self, root):
+        super().__init__({ROOT_INODE: root, })
+
+    def __getitem__(self, inode: INode) -> str:
+        path = super().__getitem__(inode)
+        if isinstance(path, set):
+            for path in path:
+                break
+        return path
+
+    def __setitem__(self, inode: INode, path: str) -> None:
+        if (old_path := super().get(inode)) is not None:
+            if isinstance(old_path, set):
+                old_path.add(path)
+            else:
+                super().__setitem__(inode, {old_path, path})
+        else:
+            super().__setitem__(inode, path)
+
+
+class FileDescriptorMapping(Dict[INode, FileDescriptor]):
+    def __init__(self):
+        super().__init__()
+        self.inodes: Dict[FileDescriptor, INode] = {}
+        self.counters = Counter()
+
+    def __setitem__(self, inode, fd):
+        if inode in self:
+            raise ValueError("Can't assign same inode twice")
+        super().__setitem__(inode, fd)
+        self.inodes[fd] = inode
+        self.counters[fd] = 1
+
+    def __delitem__(self, inode):
+        del self.inodes[(fd := super().pop(inode))]
+        del self.counters[fd]
+
+    def acquire_by_inode(self, inode: INode) -> Optional[FileDescriptor]:
+        if (fd := self.get(inode)) is not None:
+            self.counters[fd] += 1
+        return fd
+
+    def acquire(self, fd: FileDescriptor) -> None:
+        self.counters[fd] += 1
+
+    def release(self, fd: FileDescriptor) -> None:
+        if self.counters[fd] == 1:
+            del self[self.inodes[fd]]
+        else:
+            self.counters[fd] -= 1
+
+
 class CharybdisOperations(Operations):
+    enable_writeback_cache = True
+
     def __init__(self, source: str):
         super().__init__()
-        self.source = source
+        self.paths = PathMapping(root=source)
+        self.descriptors = FileDescriptorMapping()
 
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
         ...
@@ -81,7 +140,15 @@ class CharybdisOperations(Operations):
         ...
 
     async def open(self, inode: INode, flags: int, ctx: RequestContext) -> FileInfo:
-        ...
+        if (fd := self.descriptors.acquire_by_inode(inode)) is None:
+            if flags & os.O_CREAT:
+                raise ValueError("Found O_CREAT in flags")
+            try:
+                fd = os.open(self.paths[inode], flags)
+            except OSError as exc:
+                raise FUSEError(exc.errno) from None
+            self.descriptors[inode] = fd
+        return FileInfo(fh=fd)
 
     async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
         ...
