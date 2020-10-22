@@ -2,7 +2,7 @@
 
 A remotely controlled fault injection file system.
 
-##  Create env:
+##  Create virtualenv using PyEnv
     $ pyenv virtualenv 3.8.4 charybdisfs
 
 ##  Install pre-requisites
@@ -17,6 +17,6 @@ A remotely controlled fault injection file system.
     $ pyenv local charybdisfs
     $ pip install -r requirements.txt
 
-##  How to run a Docker container:
+##  How to run a Docker container
     $ docker build -t charybdisfs .
     $ docker run -it --device /dev/fuse --privileged -v /:/system_root charybdisfs /bin/bash
