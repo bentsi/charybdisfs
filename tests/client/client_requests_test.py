@@ -19,30 +19,12 @@ from client.client import CharybdisFsClient
 
 class ClientRequestTest(unittest.TestCase):
 
-    def test_correct_url(self):
-        with CharybdisFsClient() as fs_client:
-            request_status = fs_client.send_request(host="www.python.org", method='GET', json="", use_https=True)
+    pass
 
-        self.assertTrue(request_status.status_code == 200,
-                        f'Unexpected response: status {request_status.status_code}; Text: {request_status.text}')
+    # def test(self):
+    #     with CharybdisFsClient(...) as fs_client:
+    #         fs_client.add_fault()
 
-    def test_correct_url_wrong_data(self):
-        with CharybdisFsClient() as fs_client:
-            request_status = fs_client.send_request(host="google.com", method='GET', json="requests", use_https=True)
-
-        self.assertTrue(request_status.status_code == 400,
-                        f'Unexpected response: status {request_status.status_code}; Text: {request_status.text}')
-
-    def test_wrong_url(self):
-        last_exc = None
-        with CharybdisFsClient() as fs_client:
-            try:
-                _ = fs_client.send_request(host="127.0.0.1", method='GET', json="scylla", use_https=True)
-            except Exception as exc:
-                last_exc = exc
-
-        self.assertTrue(last_exc,
-                        f'Unexpected response: {str(last_exc)}')
 
 if __name__ == '__main__':
     unittest.main()
