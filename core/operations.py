@@ -133,8 +133,14 @@ class CharybdisOperations(Operations):
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         ...
 
-    async def link(self, inode: INode, new_parent_inode: INode, new_name: str, ctx: RequestContext) -> EntryAttributes:
-        ...
+    async def link(self, inode: INode, new_parent_inode: INode, new_name: bytes, ctx: RequestContext) -> EntryAttributes:
+        new_path = os.path.join(self.paths[new_parent_inode], os.fsdecode(new_name))
+        try:
+            os.link(src=self.paths[inode], dst=new_path, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        self.paths[inode] = new_path
+        return await self.getattr(inode=inode, ctx=ctx)
 
     async def listxattr(self, inode: INode, ctx: RequestContext) -> Sequence[bytes]:
         ...
