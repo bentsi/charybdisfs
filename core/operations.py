@@ -173,8 +173,13 @@ class CharybdisOperations(Operations):
     async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
         return cast(FileHandle, inode)
 
-    async def read(self, fd: FileHandle, offset: int, length: int) -> bytes:
-        ...
+    @staticmethod
+    async def read(fh: FileHandle, off: int, size: int) -> bytes:
+        try:
+            os.lseek(fh, off, os.SEEK_SET)
+            return os.read(fh, size)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
         ...
@@ -231,8 +236,13 @@ class CharybdisOperations(Operations):
         self.paths[symlink_inode] = path
         return await self.getattr(inode=symlink_inode, ctx=ctx)
 
-    async def write(self, fd: FileHandle, offset: int, buf: bytes) -> int:
-        ...
+    @staticmethod
+    async def write(fh: FileHandle, off: int, buf: bytes) -> int:
+        try:
+            os.lseek(fh, off, os.SEEK_SET)
+            return os.write(fh, buf)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def unlink(self, parent_inode: INode, name: str, ctx: RequestContext) -> None:
         ...
