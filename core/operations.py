@@ -21,6 +21,11 @@ from pyfuse3 import \
     RENAME_EXCHANGE, RENAME_NOREPLACE, ROOT_INODE
 
 
+# Everything from manpage statvfs(2) except f_flag and f_sid.
+STATVFS_DATA_FIELDS = \
+    ("f_bsize", "f_frsize", "f_blocks", "f_bfree", "f_bavail", "f_files", "f_ffree", "f_favail", "f_namemax", )
+
+
 INode = NewType("INode", int)
 INodeList = List[Tuple[INode, int]]
 FileDescriptor = NewType("FileDescriptor", int)
@@ -32,6 +37,7 @@ RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 class PathMapping(Dict[INode, str]):
     def __init__(self, root):
         super().__init__({ROOT_INODE: root, })
+        self.path_prefix_len = len(root) + 1
 
     def __getitem__(self, inode: INode) -> str:
         path = super().__getitem__(inode)
@@ -87,7 +93,7 @@ class CharybdisOperations(Operations):
 
     def __init__(self, source: str):
         super().__init__()
-        self.paths = PathMapping(root=source)
+        self.paths = PathMapping(root=source.rstrip("/"))
         self.descriptors = FileDescriptorMapping()
 
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
@@ -195,7 +201,15 @@ class CharybdisOperations(Operations):
         ...
 
     async def statfs(self, ctx: RequestContext) -> StatvfsData:
-        ...
+        try:
+            statvfs_result = os.statvfs(self.paths[ROOT_INODE])
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        statvfs_data = StatvfsData()
+        for field in STATVFS_DATA_FIELDS:
+            setattr(statvfs_data, field, getattr(statvfs_result, field))
+        statvfs_data.f_namemax -= self.paths.path_prefix_len
+        return statvfs_data
 
     async def symlink(self, parent_inode: INode, name: str, target: str, ctx: RequestContext) -> EntryAttributes:
         ...
