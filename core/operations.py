@@ -66,32 +66,35 @@ class FileDescriptorMapping(Dict[INode, FileDescriptor]):
     def __init__(self):
         super().__init__()
         self.inodes: Dict[FileDescriptor, INode] = {}
-        self.counters = Counter()
+        self.open_counters = Counter()
 
-    def __setitem__(self, inode, fd):
+    def __setitem__(self, inode: INode, fd: FileDescriptor):
         if inode in self:
             raise ValueError("Can't assign same inode twice")
         super().__setitem__(inode, fd)
         self.inodes[fd] = inode
-        self.counters[fd] = 1
+        self.open_counters[fd] = 1
 
-    def __delitem__(self, inode):
+    def __delitem__(self, inode: INode):
         del self.inodes[(fd := super().pop(inode))]
-        del self.counters[fd]
+        del self.open_counters[fd]
 
     def acquire_by_inode(self, inode: INode) -> Optional[FileDescriptor]:
         if (fd := self.get(inode)) is not None:
-            self.counters[fd] += 1
+            self.open_counters[fd] += 1
         return fd
 
     def acquire(self, fd: FileDescriptor) -> None:
-        self.counters[fd] += 1
+        self.open_counters[fd] += 1
 
-    def release(self, fd: FileDescriptor) -> None:
-        if self.counters[fd] == 1:
+    def release(self, fd: FileDescriptor) -> bool:
+        """Return True if associated inode removed from the mapping."""
+
+        if self.open_counters[fd] == 1:
             del self[self.inodes[fd]]
-        else:
-            self.counters[fd] -= 1
+            return True
+        self.open_counters[fd] -= 1
+        return False
 
 
 class CharybdisOperations(Operations):
@@ -190,8 +193,12 @@ class CharybdisOperations(Operations):
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
-    async def release(self, fd: FileHandle) -> None:
-        ...
+    async def release(self, fh: FileHandle) -> None:
+        if self.descriptors.release(cast(FileDescriptor, fh)):
+            try:
+                os.close(fh)
+            except OSError as exc:
+                raise FUSEError(exc.errno)
 
     async def releasdir(self, fh: FileHandle) -> None:
         ...
