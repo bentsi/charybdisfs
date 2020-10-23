@@ -32,6 +32,7 @@ RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 class PathMapping(Dict[INode, str]):
     def __init__(self, root):
         super().__init__({ROOT_INODE: root, })
+        self.lookups: Counter = Counter()
 
     def __getitem__(self, inode: INode) -> str:
         path = super().__getitem__(inode)
@@ -41,13 +42,24 @@ class PathMapping(Dict[INode, str]):
         return path
 
     def __setitem__(self, inode: INode, path: str) -> None:
+        self.lookups[inode] += 1
         if (old_path := super().get(inode)) is not None:
             if isinstance(old_path, set):
                 old_path.add(path)
-            else:
+            elif old_path != path:
                 super().__setitem__(inode, {old_path, path})
         else:
             super().__setitem__(inode, path)
+
+    def forget(self, inode: INode, nlookup: int) -> bool:
+        """Return True if inode removed from the mapping."""
+
+        if nlookup >= self.lookups[inode]:
+            del self.lookups[inode]
+            self.pop(inode, None)
+            return True
+        self.lookups[inode] -= nlookup
+        return False
 
 
 class FileDescriptorMapping(Dict[INode, FileDescriptor]):
@@ -102,7 +114,9 @@ class CharybdisOperations(Operations):
         ...
 
     async def forget(self, inode_list: INodeList) -> None:
-        ...
+        for inode, nlookup in inode_list:
+            if self.paths.forget(inode=inode, nlookup=nlookup) and inode in self.descriptors:
+                raise RuntimeError(f"Try to forget about {inode=} with open fd={self.descriptors[inode]}")
 
     async def flush(self, fh: FileHandle) -> None:
         ...
