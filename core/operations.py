@@ -214,8 +214,16 @@ class CharybdisOperations(Operations):
     async def statfs(self, ctx: RequestContext) -> StatvfsData:
         ...
 
-    async def symlink(self, parent_inode: INode, name: str, target: str, ctx: RequestContext) -> EntryAttributes:
-        ...
+    async def symlink(self, parent_inode: INode, name: bytes, target: bytes, ctx: RequestContext) -> EntryAttributes:
+        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        try:
+            os.symlink(src=os.fsdecode(target), dst=path)
+            os.chown(path=path, uid=ctx.uid, gid=ctx.gid, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        symlink_inode = os.lstat(path).st_ino
+        self.paths[symlink_inode] = path
+        return await self.getattr(inode=symlink_inode, ctx=ctx)
 
     async def write(self, fd: FileHandle, offset: int, buf: bytes) -> int:
         ...
