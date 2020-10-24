@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import stat
 from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, cast
 from collections import Counter
 
@@ -230,7 +231,38 @@ class CharybdisOperations(Operations):
                       fields: SetattrFields,
                       fh: FileHandle,
                       ctx: RequestContext) -> EntryAttributes:
-        ...
+        target = self.paths[inode] if fh is None else fh
+        try:
+            if fields.update_size:
+                os.truncate(path=target, length=attr.st_size)
+
+            if fields.update_mode:
+                if stat.S_ISLNK(attr.st_mode):
+                    raise ValueError("setattr call will never happen on symlinks under Linux")
+                os.chmod(path=target, mode=stat.S_IMODE(attr.st_mode))
+
+            uid = gid = -1
+            if fields.update_uid:
+                uid = attr.st_uid
+            if fields.update_gid:
+                gid = attr.st_gid
+            if uid != -1 or gid != -1:
+                os.chown(path=target, uid=uid, gid=gid, follow_symlinks=False)
+
+            atime_ns = mtime_ns = None
+            if fields.update_atime != fields.update_mtime:
+                old_attr = os.stat(path=target)
+                atime_ns = old_attr.st_atime_ns
+                mtime_ns = old_attr.st_mtime_ns
+            if fields.update_atime:
+                atime_ns = attr.st_atime_ns
+            if fields.update_mtime:
+                mtime_ns = attr.st_mtime_ns
+            if atime_ns is not None:  # at this point both atime_ns and mtime_ns are set or not set simultaneously.
+                os.utime(path=target, ns=(atime_ns, mtime_ns), follow_symlinks=fh is not None)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        return await self.getattr(inode=inode, ctx=ctx)
 
     async def setxattr(self, inode: INode, name: bytes, value: bytes, ctx: RequestContext) -> None:
         ...
