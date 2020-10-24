@@ -14,7 +14,8 @@
 
 import os
 import stat
-from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, cast
+import errno
+from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, Union, Set, NoReturn, cast
 from collections import Counter
 
 from pyfuse3 import \
@@ -35,10 +36,10 @@ FileMode = NewType("FileMode", int)
 RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 
 
-class PathMapping(Dict[INode, str]):
+class PathMapping(Dict[INode, Union[str, Set[str]]]):
     def __init__(self, root):
         super().__init__({ROOT_INODE: root, })
-        self.lookups: Counter = Counter()
+        self.inode_lookups: Counter = Counter()
         self.path_prefix_len = len(root) + 1
 
     def __getitem__(self, inode: INode) -> str:
@@ -49,7 +50,7 @@ class PathMapping(Dict[INode, str]):
         return path
 
     def __setitem__(self, inode: INode, path: str) -> None:
-        self.lookups[inode] += 1
+        self.inode_lookups[inode] += 1
         if (old_path := super().get(inode)) is not None:
             if isinstance(old_path, set):
                 old_path.add(path)
@@ -58,14 +59,38 @@ class PathMapping(Dict[INode, str]):
         else:
             super().__setitem__(inode, path)
 
-    def forget(self, inode: INode, nlookup: int) -> bool:
+    def forget_path(self, inode: INode, path: str) -> None:
+        if (inode_path := super().get(inode)) is None:
+            return
+        if isinstance(inode_path, set):
+            inode_path.remove(path)  # can raise KeyError if there is no such path
+            if len(inode_path) == 1:
+                for path in inode_path:
+                    super().__setitem__(inode, path)
+        elif inode_path == path:
+            del self[inode]
+        else:
+            raise KeyError(path)
+
+    def replace_path(self, inode: INode, old_path: str, new_path: str) -> None:
+        if (path := super().get(inode)) is None:
+            return
+        if isinstance(path, set):
+            path.remove(old_path)  # can raise KeyError if there is no such path
+            path.add(new_path)
+        else:
+            if path != old_path:
+                raise KeyError(old_path)
+            super().__setitem__(inode, new_path)
+
+    def forget_inode_lookups(self, inode: INode, nlookup: int) -> bool:
         """Return True if inode removed from the mapping."""
 
-        if nlookup >= self.lookups[inode]:
-            del self.lookups[inode]
+        if nlookup >= self.inode_lookups[inode]:
+            del self.inode_lookups[inode]
             self.pop(inode, None)
             return True
-        self.lookups[inode] -= nlookup
+        self.inode_lookups[inode] -= nlookup
         return False
 
 
@@ -104,8 +129,26 @@ class FileDescriptorMapping(Dict[INode, FileDescriptor]):
         return False
 
 
+class CharybdisRuntimeErrors:
+    @staticmethod
+    def try_to_replace_fd_for_inode(inode: INode,
+                                    old_fd: FileDescriptor,
+                                    new_fd: FileDescriptor,
+                                    exc: Optional[Exception] = None) -> NoReturn:
+        raise RuntimeError(f"Try to replace {old_fd=} with {new_fd=} for {inode=}") from None
+
+    @staticmethod
+    def forgot_inode_with_open_fd(inode: INode, fd: FileDescriptor, exc: Optional[Exception] = None) -> NoReturn:
+        raise RuntimeError(f"Forgot about {inode=} with open {fd=}") from None
+
+    @staticmethod
+    def unknown_path(inode: INode, path: str, exc: Optional[Exception] = None) -> NoReturn:
+        raise RuntimeError(f"Unknown {path=} for {inode=}") from None
+
+
 class CharybdisOperations(Operations):
     enable_writeback_cache = True
+    runtime_errors = CharybdisRuntimeErrors()
 
     def __init__(self, source: str):
         super().__init__()
@@ -125,8 +168,8 @@ class CharybdisOperations(Operations):
 
     async def forget(self, inode_list: INodeList) -> None:
         for inode, nlookup in inode_list:
-            if self.paths.forget(inode=inode, nlookup=nlookup) and inode in self.descriptors:
-                raise RuntimeError(f"Try to forget about {inode=} with open fd={self.descriptors[inode]}")
+            if self.paths.forget_inode_lookups(inode=inode, nlookup=nlookup) and inode in self.descriptors:
+                self.runtime_errors.forgot_inode_with_open_fd(inode=inode, fd=self.descriptors[inode])
 
     async def flush(self, fh: FileHandle) -> None:
         ...
@@ -143,7 +186,11 @@ class CharybdisOperations(Operations):
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         ...
 
-    async def link(self, inode: INode, new_parent_inode: INode, new_name: bytes, ctx: RequestContext) -> EntryAttributes:
+    async def link(self,
+                   inode: INode,
+                   new_parent_inode: INode,
+                   new_name: bytes,
+                   ctx: RequestContext) -> EntryAttributes:
         new_path = os.path.join(self.paths[new_parent_inode], os.fsdecode(new_name))
         try:
             os.link(src=self.paths[inode], dst=new_path, follow_symlinks=False)
@@ -172,15 +219,19 @@ class CharybdisOperations(Operations):
     async def open(self, inode: INode, flags: int, ctx: RequestContext) -> FileInfo:
         if (fd := self.descriptors.acquire_by_inode(inode)) is None:
             if flags & os.O_CREAT:
-                raise ValueError("Found O_CREAT in flags")
+                raise FUSEError(errno.EINVAL)
             try:
-                fd = os.open(self.paths[inode], flags)
+                fd = cast(FileDescriptor, os.open(self.paths[inode], flags))
             except OSError as exc:
                 raise FUSEError(exc.errno) from None
-            self.descriptors[inode] = fd
+            try:
+                self.descriptors[inode] = fd
+            except ValueError:
+                self.runtime_errors.try_to_replace_fd_for_inode(inode=inode, old_fd=self.descriptors[inode], new_fd=fd)
         return FileInfo(fh=fd)
 
-    async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
+    @staticmethod
+    async def opendir(inode: INode, ctx: RequestContext) -> FileHandle:
         return cast(FileHandle, inode)
 
     @staticmethod
@@ -214,16 +265,39 @@ class CharybdisOperations(Operations):
         ...
 
     async def rename(self,
-                     rename_inode_old: INode,
-                     name_old: str,
+                     parent_inode_old: INode,
+                     name_old: bytes,
                      parent_inode_new: INode,
-                     name_new: str,
+                     name_new: bytes,
                      flags: RenameFlags,
                      ctx: RequestContext) -> None:
-        ...
+        if flags:
+            raise FUSEError(errno.EINVAL)
 
-    async def rmdir(self, parent_inode, name: str, ctx: RequestContext) -> None:
-        ...
+        old_path = os.path.join(self.paths[parent_inode_old], os.fsdecode(name_old))
+        new_path = os.path.join(self.paths[parent_inode_new], os.fsdecode(name_new))
+        try:
+            os.rename(src=old_path, dst=new_path)
+            inode = cast(INode, os.lstat(new_path).st_ino)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+
+        try:
+            self.paths.replace_path(inode=inode, old_path=old_path, new_path=new_path)
+        except KeyError:
+            self.runtime_errors.unknown_path(inode=inode, path=old_path)
+
+    async def rmdir(self, parent_inode, name: bytes, ctx: RequestContext) -> None:
+        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        try:
+            inode = cast(INode, os.lstat(path).st_ino)
+            os.rmdir(path)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        try:
+            self.paths.forget_path(inode=inode, path=path)
+        except KeyError:
+            self.runtime_errors.unknown_path(inode=inode, path=path)
 
     async def setattr(self,
                       inode: INode,
@@ -238,7 +312,8 @@ class CharybdisOperations(Operations):
 
             if fields.update_mode:
                 if stat.S_ISLNK(attr.st_mode):
-                    raise ValueError("setattr call will never happen on symlinks under Linux")
+                    # setattr call will never happen on symlinks under Linux.
+                    raise FUSEError(errno.EINVAL)
                 os.chmod(path=target, mode=stat.S_IMODE(attr.st_mode))
 
             uid = gid = -1
@@ -285,7 +360,7 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid, follow_symlinks=False)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
-        symlink_inode = os.lstat(path).st_ino
+        symlink_inode = cast(INode, os.lstat(path).st_ino)
         self.paths[symlink_inode] = path
         return await self.getattr(inode=symlink_inode, ctx=ctx)
 
@@ -297,8 +372,17 @@ class CharybdisOperations(Operations):
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
-    async def unlink(self, parent_inode: INode, name: str, ctx: RequestContext) -> None:
-        ...
+    async def unlink(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> None:
+        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        try:
+            inode = cast(INode, os.lstat(path).st_ino)
+            os.unlink(path)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        try:
+            self.paths.forget_path(inode=inode, path=path)
+        except KeyError:
+            self.runtime_errors.unknown_path(inode=inode, path=path)
 
 
 __all__ = ("CharybdisOperations", )
