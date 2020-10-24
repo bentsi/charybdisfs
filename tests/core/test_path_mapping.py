@@ -30,6 +30,7 @@ def test_get_from_empty(mapping):
 def test_set_one_path(mapping):
     mapping[42] = "/root"
     assert mapping[42] == "/root"
+    assert mapping.lookups[42] == 1
 
 
 def test_set_many_paths(mapping):
@@ -37,4 +38,33 @@ def test_set_many_paths(mapping):
     mapping[42] = "/home"
     mapping[42] = "/lib"
     assert mapping[42] in ["/root", "/home", "/lib"]
+    assert mapping.lookups[42] == 3
     assert dict.__getitem__(mapping, 42) == {"/root", "/home", "/lib"}
+
+
+def test_set_same_path_twice(mapping):
+    mapping[42] = "/root"
+    mapping[42] = "/root"
+    assert mapping[42] == "/root"
+    assert mapping.lookups[42] == 2
+    assert dict.__getitem__(mapping, 42) == "/root"
+
+
+def test_forget(mapping):
+    mapping[42] = "/root"
+    mapping[42] = "/root"
+    mapping[42] = "/root"
+
+    mapping.forget(inode=42, nlookup=2)
+    assert 42 in mapping
+    assert mapping.lookups[42] == 1
+
+    mapping.forget(inode=42, nlookup=1)
+    assert 42 not in mapping
+    assert 42 not in mapping.lookups
+
+    mapping[13] = "/lib"
+
+    mapping.forget(inode=13, nlookup=666)
+    assert 13 not in mapping
+    assert 13 not in mapping.lookups
