@@ -31,50 +31,44 @@ def test_set_once(mapping):
     mapping[42] = 100500
     assert mapping[42] == 100500
     assert mapping.inodes[100500] == 42
-    assert mapping.counters[100500] == 1
+    assert mapping.open_counters[100500] == 1
 
 
 def test_set_twice(mapping):
     mapping[42] = 100500
-
     with pytest.raises(ValueError):
         mapping[42] = 100500
-
     assert mapping[42] == 100500
     assert mapping.inodes[100500] == 42
-    assert mapping.counters[100500] == 1
+    assert mapping.open_counters[100500] == 1
 
 
 def test_del(mapping):
     mapping[42] = 100500
 
     del mapping[42]
-
     assert 42 not in mapping
     assert 100500 not in mapping.inodes
-    assert 100500 not in mapping.counters
+    assert 100500 not in mapping.open_counters
 
 
 def test_acquire_release(mapping):
     mapping[42] = 100500
 
     mapping.acquire(100500)
-
     assert mapping[42] == 100500
     assert mapping.inodes[100500] == 42
-    assert mapping.counters[100500] == 2
+    assert mapping.open_counters[100500] == 2
 
-    mapping.release(100500)
-
+    assert not mapping.release(100500)
     assert mapping[42] == 100500
     assert mapping.inodes[100500] == 42
-    assert mapping.counters[100500] == 1
+    assert mapping.open_counters[100500] == 1
 
-    mapping.release(100500)
-
+    assert mapping.release(100500)
     assert 42 not in mapping
     assert 100500 not in mapping.inodes
-    assert 100500 not in mapping.counters
+    assert 100500 not in mapping.open_counters
 
 
 def test_acquire_by_inode(mapping):
@@ -83,7 +77,5 @@ def test_acquire_by_inode(mapping):
     assert 42 not in mapping.inodes
 
     mapping[42] = 100500
-
     assert mapping.acquire_by_inode(42) == 100500
-    assert mapping.counters[100500] == 2
-
+    assert mapping.open_counters[100500] == 2

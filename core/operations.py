@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional
+from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, cast
 from collections import Counter
 
 from pyfuse3 import \
@@ -37,6 +37,7 @@ RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 class PathMapping(Dict[INode, str]):
     def __init__(self, root):
         super().__init__({ROOT_INODE: root, })
+        self.lookups: Counter = Counter()
         self.path_prefix_len = len(root) + 1
 
     def __getitem__(self, inode: INode) -> str:
@@ -47,45 +48,59 @@ class PathMapping(Dict[INode, str]):
         return path
 
     def __setitem__(self, inode: INode, path: str) -> None:
+        self.lookups[inode] += 1
         if (old_path := super().get(inode)) is not None:
             if isinstance(old_path, set):
                 old_path.add(path)
-            else:
+            elif old_path != path:
                 super().__setitem__(inode, {old_path, path})
         else:
             super().__setitem__(inode, path)
+
+    def forget(self, inode: INode, nlookup: int) -> bool:
+        """Return True if inode removed from the mapping."""
+
+        if nlookup >= self.lookups[inode]:
+            del self.lookups[inode]
+            self.pop(inode, None)
+            return True
+        self.lookups[inode] -= nlookup
+        return False
 
 
 class FileDescriptorMapping(Dict[INode, FileDescriptor]):
     def __init__(self):
         super().__init__()
         self.inodes: Dict[FileDescriptor, INode] = {}
-        self.counters = Counter()
+        self.open_counters = Counter()
 
-    def __setitem__(self, inode, fd):
+    def __setitem__(self, inode: INode, fd: FileDescriptor):
         if inode in self:
             raise ValueError("Can't assign same inode twice")
         super().__setitem__(inode, fd)
         self.inodes[fd] = inode
-        self.counters[fd] = 1
+        self.open_counters[fd] = 1
 
-    def __delitem__(self, inode):
+    def __delitem__(self, inode: INode):
         del self.inodes[(fd := super().pop(inode))]
-        del self.counters[fd]
+        del self.open_counters[fd]
 
     def acquire_by_inode(self, inode: INode) -> Optional[FileDescriptor]:
         if (fd := self.get(inode)) is not None:
-            self.counters[fd] += 1
+            self.open_counters[fd] += 1
         return fd
 
     def acquire(self, fd: FileDescriptor) -> None:
-        self.counters[fd] += 1
+        self.open_counters[fd] += 1
 
-    def release(self, fd: FileDescriptor) -> None:
-        if self.counters[fd] == 1:
+    def release(self, fd: FileDescriptor) -> bool:
+        """Return True if associated inode removed from the mapping."""
+
+        if self.open_counters[fd] == 1:
             del self[self.inodes[fd]]
-        else:
-            self.counters[fd] -= 1
+            return True
+        self.open_counters[fd] -= 1
+        return False
 
 
 class CharybdisOperations(Operations):
@@ -97,7 +112,7 @@ class CharybdisOperations(Operations):
         self.descriptors = FileDescriptorMapping()
 
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
-        ...
+        return os.access(self.paths[inode], mode=mode)
 
     async def create(self,
                      parent_inode: INode,
@@ -108,7 +123,9 @@ class CharybdisOperations(Operations):
         ...
 
     async def forget(self, inode_list: INodeList) -> None:
-        ...
+        for inode, nlookup in inode_list:
+            if self.paths.forget(inode=inode, nlookup=nlookup) and inode in self.descriptors:
+                raise RuntimeError(f"Try to forget about {inode=} with open fd={self.descriptors[inode]}")
 
     async def flush(self, fh: FileHandle) -> None:
         ...
@@ -125,8 +142,14 @@ class CharybdisOperations(Operations):
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         ...
 
-    async def link(self, inode: INode, new_parent_inode: INode, new_name: str, ctx: RequestContext) -> EntryAttributes:
-        ...
+    async def link(self, inode: INode, new_parent_inode: INode, new_name: bytes, ctx: RequestContext) -> EntryAttributes:
+        new_path = os.path.join(self.paths[new_parent_inode], os.fsdecode(new_name))
+        try:
+            os.link(src=self.paths[inode], dst=new_path, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        self.paths[inode] = new_path
+        return await self.getattr(inode=inode, ctx=ctx)
 
     async def listxattr(self, inode: INode, ctx: RequestContext) -> Sequence[bytes]:
         ...
@@ -157,19 +180,31 @@ class CharybdisOperations(Operations):
         return FileInfo(fh=fd)
 
     async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
-        ...
+        return cast(FileHandle, inode)
 
-    async def read(self, fd: FileHandle, offset: int, length: int) -> bytes:
-        ...
+    @staticmethod
+    async def read(fh: FileHandle, off: int, size: int) -> bytes:
+        try:
+            os.lseek(fh, off, os.SEEK_SET)
+            return os.read(fh, size)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
         ...
 
-    async def readlink(self, inode: INode, ctx: RequestContext) -> INode:
-        ...
+    async def readlink(self, inode: INode, ctx: RequestContext) -> bytes:
+        try:
+            return os.fsencode(os.readlink(self.paths[inode]))
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
-    async def release(self, fd: FileHandle) -> None:
-        ...
+    async def release(self, fh: FileHandle) -> None:
+        if self.descriptors.release(cast(FileDescriptor, fh)):
+            try:
+                os.close(fh)
+            except OSError as exc:
+                raise FUSEError(exc.errno)
 
     async def releasdir(self, fh: FileHandle) -> None:
         ...
@@ -211,11 +246,24 @@ class CharybdisOperations(Operations):
         statvfs_data.f_namemax -= self.paths.path_prefix_len
         return statvfs_data
 
-    async def symlink(self, parent_inode: INode, name: str, target: str, ctx: RequestContext) -> EntryAttributes:
-        ...
+    async def symlink(self, parent_inode: INode, name: bytes, target: bytes, ctx: RequestContext) -> EntryAttributes:
+        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        try:
+            os.symlink(src=os.fsdecode(target), dst=path)
+            os.chown(path=path, uid=ctx.uid, gid=ctx.gid, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
+        symlink_inode = os.lstat(path).st_ino
+        self.paths[symlink_inode] = path
+        return await self.getattr(inode=symlink_inode, ctx=ctx)
 
-    async def write(self, fd: FileHandle, offset: int, buf: bytes) -> int:
-        ...
+    @staticmethod
+    async def write(fh: FileHandle, off: int, buf: bytes) -> int:
+        try:
+            os.lseek(fh, off, os.SEEK_SET)
+            return os.write(fh, buf)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def unlink(self, parent_inode: INode, name: str, ctx: RequestContext) -> None:
         ...
