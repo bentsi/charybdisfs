@@ -192,25 +192,13 @@ class CharybdisOperations(Operations):
         entry_attrs.entry_timeout = 0
         return entry_attrs
 
-    @staticmethod
-    def _stat_by_file_descriptor(fd):
-        try:
-            return os.fstat(fd)
-        except OSError as exc:
-            raise FUSEError(exc.errno)
-
-    @staticmethod
-    def _stat_by_path(path):
-        try:
-            return os.lstat(path)
-        except OSError as exc:
-            raise FUSEError(exc.errno)
-
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
-        if self.paths.get(inode):
-            return self._get_entry_attr_obj_from_stat_result(self._stat_by_path(path=inode))
-        else:
-            return self._get_entry_attr_obj_from_stat_result(self._stat_by_fd(fd=inode))
+        if (target := self.descriptors.get(inode)) is None:
+            target = self.paths[inode]
+        try:
+            return self._get_entry_attr_obj_from_stat_result(os.stat(target, follow_symlinks=False))
+        except OSError as exc:
+            raise FUSEError(exc.errno)
 
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         try:
