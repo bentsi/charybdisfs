@@ -16,6 +16,7 @@ import os
 import stat
 import errno
 from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, Union, Set, NoReturn, cast
+from functools import wraps
 from collections import Counter
 
 import pyfuse3
@@ -151,6 +152,30 @@ class CharybdisRuntimeErrors:
         raise RuntimeError(f"Unknown {fd=}") from None
 
 
+class faulty:
+    """Descriptor for methods which faults can be applied.
+
+    Methods shouldn't be static or class methods.
+    """
+
+    # TODO: make it works with static and class methods.
+
+    def __init__(self, func):
+        self.__func__ = func
+
+    def __get__(self, instance, owner=None):
+        @wraps(self.__func__)
+        def wrapper(*args, **kwargs):
+            # TODO: we can add inserting faults machinery right here.
+            return self.__func__(instance, *args, **kwargs)
+        return wrapper
+
+    def __set_name__(self, owner, name):
+        if not hasattr(owner, "faulty_methods"):
+            owner.faulty_methods = set()
+        owner.faulty_methods.add(name)
+
+
 class CharybdisOperations(Operations):
     enable_writeback_cache = True
     runtime_errors = CharybdisRuntimeErrors()
@@ -160,9 +185,11 @@ class CharybdisOperations(Operations):
         self.paths = PathMapping(root=source.rstrip("/"))
         self.descriptors = FileDescriptorMapping()
 
+    @faulty
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
         return os.access(self.paths[inode], mode=mode)
 
+    @faulty
     async def create(self,
                      parent_inode: INode,
                      name: str,
@@ -180,11 +207,13 @@ class CharybdisOperations(Operations):
         self.descriptors[inode] = fd
         return FileInfo(fh=fd), attrs
 
+    @faulty
     async def forget(self, inode_list: INodeList) -> None:
         for inode, nlookup in inode_list:
             if self.paths.forget_inode_lookups(inode=inode, nlookup=nlookup) and inode in self.descriptors:
                 self.runtime_errors.forgot_inode_with_open_fd(inode=inode, fd=self.descriptors[inode])
 
+    @faulty
     async def flush(self, fh: FileHandle) -> None:
         fd = cast(FileDescriptor, fh)
         if fd not in self.descriptors.inodes:
@@ -194,8 +223,8 @@ class CharybdisOperations(Operations):
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
-    @staticmethod
-    async def fsync(fh: FileHandle, datasync: bool) -> None:
+    @faulty
+    async def fsync(self, fh: FileHandle, datasync: bool) -> None:
         try:
             if datasync:
                 os.fdatasync(fh)
@@ -204,6 +233,7 @@ class CharybdisOperations(Operations):
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def fsyncdir(self, fh: FileHandle, datasync: bool) -> None:
         return await self.fsync(fh=fh, datasync=datasync)
 
@@ -223,17 +253,20 @@ class CharybdisOperations(Operations):
         entry_attrs.entry_timeout = 0
         return entry_attrs
 
+    @faulty
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
         if (target := self.descriptors.get(inode)) is None:
             target = self.paths[inode]
         return self._get_attr(target)
 
+    @faulty
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         try:
             return pyfuse3.getxattr(path=self.paths[inode], name=_bytes2str(name))
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def link(self,
                    inode: INode,
                    new_parent_inode: INode,
@@ -247,12 +280,14 @@ class CharybdisOperations(Operations):
         self.paths[inode] = new_path
         return await self.getattr(inode=inode, ctx=ctx)
 
+    @faulty
     async def listxattr(self, inode: INode, ctx: RequestContext) -> Sequence[bytes]:
         try:
             return [_str2bytes(attr) for attr in os.listxattr(path=self.paths[inode], follow_symlinks=False)]
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def lookup(self, parent_inode: INode, name: str, ctx: RequestContext) -> INode:
         path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
         attr = self._get_attr(path)
@@ -260,9 +295,11 @@ class CharybdisOperations(Operations):
             self.paths[attr.st_ino] = path
         return attr
 
+    @faulty
     async def mkdir(self, parent_inode: INode, name: str, mode: FileMode, ctx: RequestContext) -> EntryAttributes:
         ...
 
+    @faulty
     async def mknod(self,
                     parent_inode: INode,
                     name: str,
@@ -279,6 +316,7 @@ class CharybdisOperations(Operations):
         self.paths[attr.st_ino] = path
         return attr
 
+    @faulty
     async def open(self, inode: INode, flags: int, ctx: RequestContext) -> FileInfo:
         if (fd := self.descriptors.acquire_by_inode(inode)) is None:
             if flags & os.O_CREAT:
@@ -293,27 +331,30 @@ class CharybdisOperations(Operations):
                 self.runtime_errors.try_to_replace_fd_for_inode(inode=inode, old_fd=self.descriptors[inode], new_fd=fd)
         return FileInfo(fh=fd)
 
-    @staticmethod
-    async def opendir(inode: INode, ctx: RequestContext) -> FileHandle:
+    @faulty
+    async def opendir(self, inode: INode, ctx: RequestContext) -> FileHandle:
         return cast(FileHandle, inode)
 
-    @staticmethod
-    async def read(fh: FileHandle, off: int, size: int) -> bytes:
+    @faulty
+    async def read(self, fh: FileHandle, off: int, size: int) -> bytes:
         try:
             os.lseek(fh, off, os.SEEK_SET)
             return os.read(fh, size)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
         ...
 
+    @faulty
     async def readlink(self, inode: INode, ctx: RequestContext) -> bytes:
         try:
             return os.fsencode(os.readlink(self.paths[inode]))
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def release(self, fh: FileHandle) -> None:
         if self.descriptors.release(cast(FileDescriptor, fh)):
             try:
@@ -321,15 +362,18 @@ class CharybdisOperations(Operations):
             except OSError as exc:
                 raise FUSEError(exc.errno)
 
+    @faulty
     async def releasdir(self, fh: FileHandle) -> None:
         ...
 
+    @faulty
     async def removexattr(self, inode: INode, name: bytes, ctx: RequestContext) -> None:
         try:
             os.removexattr(path=self.paths[inode], attribute=name, follow_symlinks=False)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def rename(self,
                      parent_inode_old: INode,
                      name_old: bytes,
@@ -353,6 +397,7 @@ class CharybdisOperations(Operations):
         except KeyError:
             self.runtime_errors.unknown_path(inode=inode, path=old_path)
 
+    @faulty
     async def rmdir(self, parent_inode, name: bytes, ctx: RequestContext) -> None:
         path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
         try:
@@ -365,6 +410,7 @@ class CharybdisOperations(Operations):
         except KeyError:
             self.runtime_errors.unknown_path(inode=inode, path=path)
 
+    @faulty
     async def setattr(self,
                       inode: INode,
                       attr: EntryAttributes,
@@ -405,12 +451,14 @@ class CharybdisOperations(Operations):
             raise FUSEError(exc.errno) from None
         return await self.getattr(inode=inode, ctx=ctx)
 
+    @faulty
     async def setxattr(self, inode: INode, name: bytes, value: bytes, ctx: RequestContext) -> None:
         try:
             pyfuse3.setxattr(path=self.paths[inode], name=_bytes2str(name), value=value)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def statfs(self, ctx: RequestContext) -> StatvfsData:
         try:
             statvfs_result = os.statvfs(self.paths[ROOT_INODE])
@@ -422,6 +470,7 @@ class CharybdisOperations(Operations):
         statvfs_data.f_namemax -= self.paths.path_prefix_len
         return statvfs_data
 
+    @faulty
     async def symlink(self, parent_inode: INode, name: bytes, target: bytes, ctx: RequestContext) -> EntryAttributes:
         path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
         try:
@@ -433,14 +482,15 @@ class CharybdisOperations(Operations):
         self.paths[symlink_inode] = path
         return await self.getattr(inode=symlink_inode, ctx=ctx)
 
-    @staticmethod
-    async def write(fh: FileHandle, off: int, buf: bytes) -> int:
+    @faulty
+    async def write(self, fh: FileHandle, off: int, buf: bytes) -> int:
         try:
             os.lseek(fh, off, os.SEEK_SET)
             return os.write(fh, buf)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
 
+    @faulty
     async def unlink(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> None:
         path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
         try:
