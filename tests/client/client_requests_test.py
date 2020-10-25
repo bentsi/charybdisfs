@@ -11,19 +11,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import errno
 import unittest
 
 from client.client import CharybdisFsClient
+from core.faults import LatencyFault, ErrorFault, SysCall, Status
+
+
+class MockRestAPI:
+    pass
 
 
 class ClientRequestTest(unittest.TestCase):
 
-    pass
+    def test_latency(self):
+        with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
+            latency_fault = LatencyFault(sys_call=SysCall.WRITE)
+            response = fs_client.add_fault(fault=latency_fault)
 
-    # def test(self):
-    #     with CharybdisFsClient(...) as fs_client:
-    #         fs_client.add_fault()
+        self.assertTrue(response.status_code == 200,
+                        f'Request failed. Status: {response.status_code}\n Text: {response.text}')
+
+    def test_error(self):
+        with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
+            latency_fault = ErrorFault(error_no=errno.EADV, random=False, sys_call=SysCall.WRITE)
+            response = fs_client.add_fault(fault=latency_fault)
+
+        self.assertTrue(response.status_code == 200,
+                        f'Request failed. Status: {response.status_code}\n Text: {response.text}')
 
 
 if __name__ == '__main__':
