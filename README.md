@@ -21,11 +21,17 @@ A remotely controlled fault injection file system.
     $ docker build -t charybdisfs .
     
 ##  How to run a Docker container
-    $ docker run -it --device /dev/fuse --privileged /bin/bash
+
+All CharybisFS mounts will be available inside Docker container only.
+
+    $ docker run -it --rm --device /dev/fuse --privileged -v $(pwd):/src charybdisfs bash
     
 ## How to run a Docker container with mount propogation
-    $ docker run -it --device /dev/fuse --privileged \
-        --mount type=bind,source=/,target=/docker_host_root,bind-propagation=rshared charybdisfs /bin/bash
+
+Whole host filesystem will be available at `/docker_host_root` and if you mount CharybdisFS at any point under this directory then it'll be available on the host system too.
+
+    $ docker run -it --rm --device /dev/fuse --privileged -v $(pwd):/src -v /:/docker_host_root,rshared charybdisfs bash
+    
 
 ## How to run CharybdisFS for existent directory
 
