@@ -30,7 +30,8 @@ All CharybisFS mounts will be available inside Docker container only.
 
 Whole host filesystem will be available at `/docker_host_root` and if you mount CharybdisFS at any point under this directory then it'll be available on the host system too.
 
-    $ docker run -it --rm --device /dev/fuse --privileged -v $(pwd):/src -v /:/docker_host_root,rshared charybdisfs bash
+    $ docker run -it --rm --device /dev/fuse --privileged \
+        -v $(pwd):/src -v /:/docker_host_root:rw,rshared charybdisfs bash
     
 
 ## How to run CharybdisFS for existent directory
