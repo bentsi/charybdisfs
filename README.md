@@ -28,5 +28,10 @@ A remotely controlled fault injection file system.
         --mount type=bind,source=/,target=/docker_host_root,bind-propagation=rshared charybdisfs /bin/bash
 
 ## How to run CharybdisFS for existent directory
-    $ mount --bind /path/to/source_dir /path/to/.shadow-source_dir
-    $ python -m charybdisfs /path/to/.shadow-sourcedir /path/to/source_dir
+
+The idea behind is to create a bind mount to have access to original files and then mount CharybdisFS to the original path.
+Note that bind mounts can be done only on the same filesystem.
+
+    $ mkdir /path/to/.shadow_source_dir
+    $ mount --bind /path/to/source_dir /path/to/.shadow_source_dir
+    $ python -m charybdisfs /path/to/.shadow_source_dir /path/to/source_dir
