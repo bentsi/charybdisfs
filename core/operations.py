@@ -165,7 +165,16 @@ class CharybdisOperations(Operations):
                      mode: FileMode,
                      flags: int,
                      ctx: RequestContext) -> Tuple[FileInfo, EntryAttributes]:
-        ...
+        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        try:
+            fd = os.open(path, flags | os.O_CREAT | os.O_TRUNC)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+        attrs = self._get_attr(fd)
+        inode = attrs.st_ino
+        self.paths[inode] = path
+        self.descriptors[inode] = fd
+        return FileInfo(fh=fd), attrs
 
     async def forget(self, inode_list: INodeList) -> None:
         for inode, nlookup in inode_list:
@@ -182,7 +191,12 @@ class CharybdisOperations(Operations):
         ...
 
     @staticmethod
-    def _get_entry_attr_obj_from_stat_result(stat_result: os.stat_result) -> EntryAttributes:
+    def _get_attr(target: Union[str, FileDescriptor]) -> EntryAttributes:
+        try:
+            stat_result = os.stat(target, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+
         stat_attrs = [attr for attr in dir(stat_result) if attr.startswith("st_")]
         entry_attrs = EntryAttributes()
         for stat_attr in stat_attrs:
@@ -195,10 +209,7 @@ class CharybdisOperations(Operations):
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
         if (target := self.descriptors.get(inode)) is None:
             target = self.paths[inode]
-        try:
-            return self._get_entry_attr_obj_from_stat_result(os.stat(target, follow_symlinks=False))
-        except OSError as exc:
-            raise FUSEError(exc.errno)
+        return self._get_attr(target)
 
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         try:
