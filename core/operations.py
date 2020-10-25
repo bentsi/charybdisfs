@@ -252,7 +252,15 @@ class CharybdisOperations(Operations):
                     mode: FileMode,
                     rdev: int,
                     ctx: RequestContext) -> EntryAttributes:
-        ...
+        path = os.path.join(self.paths(parent_inode), os.fsdecode(name))
+        try:
+            os.mknod(path=path, mode=(mode & ~ctx.umask), device=rdev)
+            os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+        attr = self._getattr(path)
+        self.paths[attr.st_ino] = path
+        return attr
 
     async def open(self, inode: INode, flags: int, ctx: RequestContext) -> FileInfo:
         if (fd := self.descriptors.acquire_by_inode(inode)) is None:
