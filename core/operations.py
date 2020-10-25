@@ -266,8 +266,8 @@ class CharybdisOperations(Operations):
         except OSError as exc:
             raise FUSEError(exc.errno)
 
-        stat_attrs = [attr for attr in dir(stat_result) if attr.startswith("st_")]
         entry_attrs = EntryAttributes()
+        stat_attrs = [attr for attr in dir(entry_attrs) if attr.startswith("st_")]
         for stat_attr in stat_attrs:
             if getattr(entry_attrs, stat_attr):
                 setattr(entry_attrs, stat_attr, getattr(stat_result, stat_attr))
