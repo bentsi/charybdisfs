@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import trio
 import click
 import pyfuse3
@@ -21,10 +23,13 @@ from core.operations import CharybdisOperations
 
 @click.command()
 @click.option('--debug/--no-debug', default=False)
+@click.option('--enospc-probability', type=float, default=0.5)
 @click.argument("source", type=str)
 @click.argument("target", type=str)
-def start_charybdisfs(source: str, target: str, debug: bool) -> None:
-    operations = CharybdisOperations(source=source)
+def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability) -> None:
+    logging.basicConfig()
+
+    operations = CharybdisOperations(source=source, enospc_probability=enospc_probability)
 
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add("fsname=charybdisfs")
