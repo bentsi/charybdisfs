@@ -262,7 +262,7 @@ class CharybdisOperations(Operations):
     @staticmethod
     def _get_attr(target: Union[str, FileDescriptor]) -> EntryAttributes:
         try:
-            stat_result = os.stat(target, follow_symlinks=False)
+            stat_result = os.lstat(target) if isinstance(target, str) else os.fstat(target)
         except OSError as exc:
             raise FUSEError(exc.errno)
 
