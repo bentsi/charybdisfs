@@ -26,3 +26,7 @@ A remotely controlled fault injection file system.
 ## How to run a Docker container with mount propogation
     $ docker run -it --device /dev/fuse --privileged \
         --mount type=bind,source=/,target=/docker_host_root,bind-propagation=rshared charybdisfs /bin/bash
+
+## How to run CharybdisFS for existent directory
+    $ mount --bind /path/to/source_dir /path/to/.shadow-source_dir
+    $ python -m charybdisfs /path/to/.shadow-sourcedir /path/to/source_dir
