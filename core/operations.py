@@ -387,7 +387,7 @@ class CharybdisOperations(Operations):
             if attr.st_ino > start_id:
                 file_names.append((attr.st_ino, fname, attr))
         for cur_inode, file_name, attr in sorted(file_names):
-            if pyfuse3.readdir_reply(token, os.fsencode(file_name), attr, cur_inode):
+            if not pyfuse3.readdir_reply(token, os.fsencode(file_name), attr, cur_inode):
                 break
             self.paths[cur_inode] = os.path.join(base_path, file_name)
 
