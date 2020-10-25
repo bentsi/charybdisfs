@@ -346,7 +346,7 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        attr = self._getattr(path)
+        attr = self._get_attr(path)
         self.paths[attr.st_ino] = path
         return attr
 
