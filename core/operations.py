@@ -407,7 +407,7 @@ class CharybdisOperations(Operations):
                 raise FUSEError(exc.errno)
 
     @faulty
-    async def releasdir(self, fh: FileHandle) -> None:
+    async def releasedir(self, fh: FileHandle) -> None:
         pass
 
     @faulty
