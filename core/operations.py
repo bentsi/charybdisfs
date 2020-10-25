@@ -408,7 +408,7 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def releasdir(self, fh: FileHandle) -> None:
-        ...
+        pass
 
     @faulty
     async def removexattr(self, inode: INode, name: bytes, ctx: RequestContext) -> None:
