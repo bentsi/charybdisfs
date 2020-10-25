@@ -20,14 +20,14 @@ from requests import Session, Request, Response, ConnectionError
 class CharybdisFsClient:
     rest_resource = 'faults'
 
-    def __init__(self, host, port, timeout, use_https: bool = False):
+    def __init__(self, host: str, port: int, timeout: int = 10, use_https: bool = False):
         self._session = Session()
         self.host = host
         self.port = port
         self.timeout = timeout
         self.use_https = use_https
         http = "http" if not self.use_https else "https"
-        self.base_url = f"{http}://{self.host}{self.port}"
+        self.base_url = f"{http}://{self.host}{str(self.port)}"
         self.connect()
         self.active_faults = []
 
@@ -49,7 +49,7 @@ class CharybdisFsClient:
     def close(self):
         self._session.close()
 
-    def send_request(self, resource, method, json: str=None, fault_id: str=None) -> Response:
+    def send_request(self, resource, method, json: str = None, fault_id: str = None) -> Response:
         fault_id = f"/{fault_id}" if fault_id is None else ""
         url = f"{self.base_url}/{resource}{fault_id}"
 
@@ -58,9 +58,8 @@ class CharybdisFsClient:
         response = self._session.send(request=prepped_request, timeout=self.timeout)
         return response
 
-    def add_fault(self, fault):
-        # TODO: convert fault object to json format
-        data_json = fault
+    def add_fault(self, fault) -> Response:
+        data_json = fault._serialize()
         fault_id = str(uuid.uuid4())
 
         response = self.send_request(resource=self.rest_resource, method ='POST', fault_id=fault_id, json=data_json)
@@ -70,7 +69,7 @@ class CharybdisFsClient:
 
         return response
 
-    def remove_fault(self, fault_id: str):
+    def remove_fault(self, fault_id: str) -> Response:
         response = self.send_request(resource=self.rest_resource, method ='DELETE', fault_id=fault_id)
 
         if response.status_code == 200:
@@ -78,7 +77,7 @@ class CharybdisFsClient:
 
         return response
 
-    def get_active_fault(self):
+    def get_active_fault(self) -> Response:
         response = self.send_request(resource=self.rest_resource, method='POST')
 
         return response
