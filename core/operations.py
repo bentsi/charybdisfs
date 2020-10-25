@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import os
 import stat
 import errno
-from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, Union, Set, NoReturn, cast
+import random
+import logging
+from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, Union, Set, NoReturn, Callable, Type, cast
 from functools import wraps
 from collections import Counter
 
@@ -29,6 +33,8 @@ from pyfuse3 import \
 STATVFS_DATA_FIELDS = \
     ("f_bsize", "f_frsize", "f_blocks", "f_bfree", "f_bavail", "f_files", "f_ffree", "f_favail", "f_namemax", )
 
+LOGGER = logging.getLogger(__name__)
+
 
 INode = NewType("INode", int)
 INodeList = List[Tuple[INode, int]]
@@ -39,7 +45,7 @@ RenameFlags = Literal[RENAME_EXCHANGE, RENAME_NOREPLACE]
 
 
 class PathMapping(Dict[INode, Union[str, Set[str]]]):
-    def __init__(self, root):
+    def __init__(self, root: str):
         super().__init__({ROOT_INODE: root, })
         self.inode_lookups: Counter = Counter()
         self.path_prefix_len = len(root) + 1
@@ -163,17 +169,29 @@ class faulty:
 
     # TODO: make it works with static and class methods.
 
-    def __init__(self, func):
+    def __init__(self, func: Callable):
         self.__func__ = func
 
-    def __get__(self, instance, owner=None):
+    def __get__(self, instance: CharybdisOperations, owner: Optional[Type[CharybdisOperations]] = None) -> Callable:
         @wraps(self.__func__)
         def wrapper(*args, **kwargs):
-            # TODO: we can add inserting faults machinery right here.
+            # This is an example of a fault.  It raises ENOSPC with 50% probability.
+            #
+            # At this point you should have following things:
+            #   * self.__func__ : original passthru FS call
+            #   * self.__name__ : name of FS call
+            #   * instance      : instance of CharibdisOperations class
+            #   * args, kwargs  : arguments for FS call
+            #
+            # TODO: replace it with configurable faults.
+            if random.random() < instance.enospc_probability:
+                LOGGER.info("Raise ENOSPC for `%s' instead of passthru call", self.__name__)
+                raise FUSEError(errno.ENOSPC)
             return self.__func__(instance, *args, **kwargs)
         return wrapper
 
-    def __set_name__(self, owner, name):
+    def __set_name__(self, owner: Type[CharybdisOperations], name: str) -> None:
+        self.__name__ = name
         if not hasattr(owner, "faulty_methods"):
             owner.faulty_methods = set()
         owner.faulty_methods.add(name)
@@ -183,10 +201,11 @@ class CharybdisOperations(Operations):
     enable_writeback_cache = True
     runtime_errors = CharybdisRuntimeErrors()
 
-    def __init__(self, source: str):
+    def __init__(self, source: str, enospc_probability: float):
         super().__init__()
         self.paths = PathMapping(root=source.rstrip("/"))
         self.descriptors = FileDescriptorMapping()
+        self.enospc_probability = enospc_probability
 
     @faulty
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
