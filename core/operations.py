@@ -223,11 +223,11 @@ class CharybdisOperations(Operations):
             fd = os.open(path, flags | os.O_CREAT | os.O_TRUNC)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        attrs = self._get_attr(fd)
-        inode = attrs.st_ino
+        entry_attrs = self._get_entry_attrs(fd)
+        inode = entry_attrs.st_ino
         self.paths[inode] = path
         self.descriptors[inode] = fd
-        return FileInfo(fh=fd), attrs
+        return FileInfo(fh=fd), entry_attrs
 
     @faulty
     async def forget(self, inode_list: INodeList) -> None:
@@ -260,17 +260,15 @@ class CharybdisOperations(Operations):
         return await self.fsync(fh=fh, datasync=datasync)
 
     @staticmethod
-    def _get_attr(target: Union[str, FileDescriptor]) -> EntryAttributes:
+    def _get_entry_attrs(target: Union[str, FileDescriptor]) -> EntryAttributes:
         try:
             stat_result = os.lstat(target) if isinstance(target, str) else os.fstat(target)
         except OSError as exc:
             raise FUSEError(exc.errno)
-
         entry_attrs = EntryAttributes()
-        stat_attrs = [attr for attr in dir(entry_attrs) if attr.startswith("st_")]
-        for stat_attr in stat_attrs:
-            if getattr(entry_attrs, stat_attr):
-                setattr(entry_attrs, stat_attr, getattr(stat_result, stat_attr))
+        for attr in dir(entry_attrs):
+            if attr.startswith("st_") and hasattr(stat_result, attr):
+                setattr(entry_attrs, attr, getattr(stat_result, attr))
         entry_attrs.attr_timeout = 0
         entry_attrs.entry_timeout = 0
         return entry_attrs
@@ -279,7 +277,7 @@ class CharybdisOperations(Operations):
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
         if (target := self.descriptors.get(inode)) is None:
             target = self.paths[inode]
-        return self._get_attr(target)
+        return self._get_entry_attrs(target)
 
     @faulty
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
@@ -312,10 +310,10 @@ class CharybdisOperations(Operations):
     @faulty
     async def lookup(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> EntryAttributes:
         path = self.paths.join(parent_inode, name)
-        attr = self._get_attr(path)
+        entry_attrs = self._get_entry_attrs(path)
         if name not in (".", ".."):
-            self.paths[attr.st_ino] = path
-        return attr
+            self.paths[entry_attrs.st_ino] = path
+        return entry_attrs
 
     @faulty
     async def mkdir(self,
@@ -329,9 +327,9 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        attr = self._get_attr(path)
-        self.paths[attr.st_ino] = path
-        return attr
+        entry_attrs = self._get_entry_attrs(path)
+        self.paths[entry_attrs.st_ino] = path
+        return entry_attrs
 
     @faulty
     async def mknod(self,
@@ -346,9 +344,9 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        attr = self._get_attr(path)
-        self.paths[attr.st_ino] = path
-        return attr
+        entry_attrs = self._get_entry_attrs(path)
+        self.paths[entry_attrs.st_ino] = path
+        return entry_attrs
 
     @faulty
     async def open(self, inode: INode, flags: int, ctx: RequestContext) -> FileInfo:
@@ -379,17 +377,16 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
-        base_path = self.paths[inode]
-        file_names = []
-        for fname in pyfuse3.listdir(base_path):
-            fname_path = self.paths.join(inode, fname)
-            attr = self._get_attr(fname_path)
-            if attr.st_ino > start_id:
-                file_names.append((attr.st_ino, fname, attr))
-        for cur_inode, file_name, attr in sorted(file_names):
-            if not pyfuse3.readdir_reply(token, os.fsencode(file_name), attr, cur_inode):
+        dir_path = self.paths[inode]
+        files = []
+        for fname in pyfuse3.listdir(dir_path):
+            entry_attrs = self._get_entry_attrs(self.paths.join(inode, fname))
+            if entry_attrs.st_ino > start_id:
+                files.append((entry_attrs.st_ino, fname, entry_attrs))
+        for ino, fname, entry_attrs in sorted(files):
+            if not pyfuse3.readdir_reply(token, os.fsencode(fname), entry_attrs, ino):
                 break
-            self.paths[cur_inode] = os.path.join(base_path, file_name)
+            self.paths[ino] = os.path.join(dir_path, fname)
 
     @faulty
     async def readlink(self, inode: INode, ctx: RequestContext) -> bytes:
