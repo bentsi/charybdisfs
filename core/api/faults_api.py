@@ -42,5 +42,13 @@ class Root(object):
             else:
                 cherrypy.response.status = 404
             return {'fault_id': fault_id}
-if __name__ == '__main__':
+
+def rest_start(port=80):
+    cherrypy.config.update({
+        'server.socket_host': '0.0.0.0',
+        'server.socket_port': port,
+    })
     cherrypy.quickstart(Root())
+
+if __name__ == '__main__':
+    rest_start(port=8080)
