@@ -360,7 +360,17 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def readdir(self, inode: INode, start_id: int, token: ReaddirToken) -> None:
-        ...
+        base_path = self.paths[inode]
+        file_names = []
+        for fname in pyfuse3.listdir(base_path):
+            fname_path = self.paths.join(inode, fname)
+            attr = self._get_attr(fname_path)
+            if attr.st_ino > start_id:
+                file_names.append((attr.st_ino, fname, attr))
+        for cur_inode, file_name, attr in sorted(file_names):
+            if pyfuse3.readdir_reply(token, os.fsencode(file_name), attr, cur_inode):
+                break
+            self.paths[cur_inode] = os.path.join(base_path, file_name)
 
     @faulty
     async def readlink(self, inode: INode, ctx: RequestContext) -> bytes:
