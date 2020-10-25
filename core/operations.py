@@ -146,6 +146,10 @@ class CharybdisRuntimeErrors:
     def unknown_path(inode: INode, path: str, exc: Optional[Exception] = None) -> NoReturn:
         raise RuntimeError(f"Unknown {path=} for {inode=}") from None
 
+    @staticmethod
+    def unknown_fd(fd: FileDescriptor, exc: Optional[Exception] = None) -> NoReturn:
+        raise RuntimeError(f"Unknown {fd=}") from None
+
 
 class CharybdisOperations(Operations):
     enable_writeback_cache = True
@@ -182,13 +186,26 @@ class CharybdisOperations(Operations):
                 self.runtime_errors.forgot_inode_with_open_fd(inode=inode, fd=self.descriptors[inode])
 
     async def flush(self, fh: FileHandle) -> None:
-        ...
+        fd = cast(FileDescriptor, fh)
+        if fd not in self.descriptors.inodes:
+            self.runtime_errors.unknown_fd(fd=fd)
+        try:
+            open(file=fd, mode="r+b", closefd=False).flush()  # not sure about which mode we should use here.
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
-    async def fsync(self, fh: INode, datasync: bool) -> None:
-        ...
+    @staticmethod
+    async def fsync(fh: FileHandle, datasync: bool) -> None:
+        try:
+            if datasync:
+                os.fdatasync(fh)
+            else:
+                os.fsync(fh)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def fsyncdir(self, fh: FileHandle, datasync: bool) -> None:
-        ...
+        return await self.fsync(fh=fh, datasync=datasync)
 
     @staticmethod
     def _get_attr(target: Union[str, FileDescriptor]) -> EntryAttributes:
