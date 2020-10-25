@@ -61,6 +61,9 @@ class PathMapping(Dict[INode, Union[str, Set[str]]]):
         else:
             super().__setitem__(inode, path)
 
+    def join(self, inode: INode, path: Union[str, bytes], /) -> str:
+        return os.path.join(self[inode], os.fsdecode(path))
+
     def forget_path(self, inode: INode, path: str) -> None:
         if (inode_path := super().get(inode)) is None:
             return
@@ -192,11 +195,11 @@ class CharybdisOperations(Operations):
     @faulty
     async def create(self,
                      parent_inode: INode,
-                     name: str,
+                     name: bytes,
                      mode: FileMode,
                      flags: int,
                      ctx: RequestContext) -> Tuple[FileInfo, EntryAttributes]:
-        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        path = self.paths.join(parent_inode, name)
         try:
             fd = os.open(path, flags | os.O_CREAT | os.O_TRUNC)
         except OSError as exc:
@@ -272,7 +275,7 @@ class CharybdisOperations(Operations):
                    new_parent_inode: INode,
                    new_name: bytes,
                    ctx: RequestContext) -> EntryAttributes:
-        new_path = os.path.join(self.paths[new_parent_inode], os.fsdecode(new_name))
+        new_path = self.paths.join(new_parent_inode, new_name)
         try:
             os.link(src=self.paths[inode], dst=new_path, follow_symlinks=False)
         except OSError as exc:
@@ -288,8 +291,8 @@ class CharybdisOperations(Operations):
             raise FUSEError(exc.errno) from None
 
     @faulty
-    async def lookup(self, parent_inode: INode, name: str, ctx: RequestContext) -> INode:
-        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+    async def lookup(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> INode:
+        path = self.paths.join(parent_inode, name)
         attr = self._get_attr(path)
         if name not in (".", ".."):
             self.paths[attr.st_ino] = path
@@ -302,11 +305,11 @@ class CharybdisOperations(Operations):
     @faulty
     async def mknod(self,
                     parent_inode: INode,
-                    name: str,
+                    name: bytes,
                     mode: FileMode,
                     rdev: int,
                     ctx: RequestContext) -> EntryAttributes:
-        path = os.path.join(self.paths(parent_inode), os.fsdecode(name))
+        path = self.paths.join(parent_inode, name)
         try:
             os.mknod(path=path, mode=(mode & ~ctx.umask), device=rdev)
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
@@ -384,8 +387,8 @@ class CharybdisOperations(Operations):
         if flags:
             raise FUSEError(errno.EINVAL)
 
-        old_path = os.path.join(self.paths[parent_inode_old], os.fsdecode(name_old))
-        new_path = os.path.join(self.paths[parent_inode_new], os.fsdecode(name_new))
+        old_path = self.paths.join(parent_inode_old, name_old)
+        new_path = self.paths.join(parent_inode_new, name_new)
         try:
             os.rename(src=old_path, dst=new_path)
             inode = cast(INode, os.lstat(new_path).st_ino)
@@ -399,7 +402,7 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def rmdir(self, parent_inode, name: bytes, ctx: RequestContext) -> None:
-        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        path = self.paths.join(parent_inode, name)
         try:
             inode = cast(INode, os.lstat(path).st_ino)
             os.rmdir(path)
@@ -472,7 +475,7 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def symlink(self, parent_inode: INode, name: bytes, target: bytes, ctx: RequestContext) -> EntryAttributes:
-        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        path = self.paths.join(parent_inode, name)
         try:
             os.symlink(src=os.fsdecode(target), dst=path)
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid, follow_symlinks=False)
@@ -492,7 +495,7 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def unlink(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> None:
-        path = os.path.join(self.paths[parent_inode], os.fsdecode(name))
+        path = self.paths.join(parent_inode, name)
         try:
             inode = cast(INode, os.lstat(path).st_ino)
             os.unlink(path)
