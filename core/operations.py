@@ -180,8 +180,36 @@ class CharybdisOperations(Operations):
     async def fsyncdir(self, fh: FileHandle, datasync: bool) -> None:
         ...
 
+    @staticmethod
+    def _get_entry_attr_obj_from_stat_result(stat_result: os.stat_result) -> EntryAttributes:
+        stat_attrs = [attr for attr in dir(stat_result) if attr.startswith("st_")]
+        entry_attrs = EntryAttributes()
+        for stat_attr in stat_attrs:
+            if getattr(entry_attrs, stat_attr):
+                setattr(entry_attrs, stat_attr, getattr(stat_result, stat_attr))
+        entry_attrs.attr_timeout = 0
+        entry_attrs.entry_timeout = 0
+        return entry_attrs
+
+    @staticmethod
+    def _stat_by_file_descriptor(fd):
+        try:
+            return os.fstat(fd)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+
+    @staticmethod
+    def _stat_by_path(path):
+        try:
+            return os.lstat(path)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
-        ...
+        if self.paths.get(inode):
+            return self._get_entry_attr_obj_from_stat_result(self._stat_by_path(path=inode))
+        else:
+            return self._get_entry_attr_obj_from_stat_result(self._stat_by_fd(fd=inode))
 
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
         ...
