@@ -291,7 +291,7 @@ class CharybdisOperations(Operations):
             raise FUSEError(exc.errno) from None
 
     @faulty
-    async def lookup(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> INode:
+    async def lookup(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> EntryAttributes:
         path = self.paths.join(parent_inode, name)
         attr = self._get_attr(path)
         if name not in (".", ".."):
@@ -299,8 +299,20 @@ class CharybdisOperations(Operations):
         return attr
 
     @faulty
-    async def mkdir(self, parent_inode: INode, name: str, mode: FileMode, ctx: RequestContext) -> EntryAttributes:
-        ...
+    async def mkdir(self,
+                    parent_inode: INode,
+                    name: bytes,
+                    mode: FileMode,
+                    ctx: RequestContext) -> EntryAttributes:
+        path = self.paths.join(parent_inode, name)
+        try:
+            os.mkdir(path=path, mode=(mode & ~ctx.umask))
+            os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
+        except OSError as exc:
+            raise FUSEError(exc.errno)
+        attr = self._get_attr(path)
+        self.paths[attr.st_ino] = path
+        return attr
 
     @faulty
     async def mknod(self,
