@@ -18,6 +18,7 @@ import errno
 from typing import NewType, List, Tuple, Literal, Sequence, Dict, Optional, Union, Set, NoReturn, cast
 from collections import Counter
 
+import pyfuse3
 from pyfuse3 import \
     Operations, RequestContext, EntryAttributes, SetattrFields, FileInfo, StatvfsData, ReaddirToken, FUSEError, \
     RENAME_EXCHANGE, RENAME_NOREPLACE, ROOT_INODE
@@ -212,7 +213,10 @@ class CharybdisOperations(Operations):
             return self._get_entry_attr_obj_from_stat_result(self._stat_by_fd(fd=inode))
 
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
-        ...
+        try:
+            return pyfuse3.getxattr(path=self.paths[inode], name=_bytes2str(name))
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def link(self,
                    inode: INode,
@@ -228,7 +232,10 @@ class CharybdisOperations(Operations):
         return await self.getattr(inode=inode, ctx=ctx)
 
     async def listxattr(self, inode: INode, ctx: RequestContext) -> Sequence[bytes]:
-        ...
+        try:
+            return [_str2bytes(attr) for attr in os.listxattr(path=self.paths[inode], follow_symlinks=False)]
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def lookup(self, parent_inode: INode, name: str, ctx: RequestContext) -> INode:
         ...
@@ -290,7 +297,10 @@ class CharybdisOperations(Operations):
         ...
 
     async def removexattr(self, inode: INode, name: bytes, ctx: RequestContext) -> None:
-        ...
+        try:
+            os.removexattr(path=self.paths[inode], attribute=name, follow_symlinks=False)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def rename(self,
                      parent_inode_old: INode,
@@ -368,7 +378,10 @@ class CharybdisOperations(Operations):
         return await self.getattr(inode=inode, ctx=ctx)
 
     async def setxattr(self, inode: INode, name: bytes, value: bytes, ctx: RequestContext) -> None:
-        ...
+        try:
+            pyfuse3.setxattr(path=self.paths[inode], name=_bytes2str(name), value=value)
+        except OSError as exc:
+            raise FUSEError(exc.errno) from None
 
     async def statfs(self, ctx: RequestContext) -> StatvfsData:
         try:
@@ -411,6 +424,14 @@ class CharybdisOperations(Operations):
             self.paths.forget_path(inode=inode, path=path)
         except KeyError:
             self.runtime_errors.unknown_path(inode=inode, path=path)
+
+
+def _str2bytes(val: str, /) -> bytes:
+    return val.encode(encoding=pyfuse3.fse, errors="surrogateescape")
+
+
+def _bytes2str(val: bytes, /) -> str:
+    return val.decode(encoding=pyfuse3.fse, errors="surrogateescape")
 
 
 __all__ = ("CharybdisOperations", )
