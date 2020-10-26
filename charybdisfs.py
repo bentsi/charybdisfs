@@ -18,6 +18,7 @@ import sys
 import uuid
 import errno
 import logging
+from threading import Thread
 
 import trio
 import click
@@ -26,6 +27,7 @@ import pyfuse3
 from core.faults import ErrorFault, SysCall
 from core.operations import CharybdisOperations
 from core.configuration import Configuration
+from core.rest_api import rest_start, rest_stop
 
 
 LOGGER = logging.getLogger("charybdisfs")
@@ -66,13 +68,17 @@ def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability:
     if debug:
         fuse_options.add("debug")
 
+    server_thread = Thread(target=rest_start, daemon=True)
+    server_thread.start()
+
     pyfuse3.init(operations, target, fuse_options)
     try:
         trio.run(pyfuse3.main)
     except:
         pyfuse3.close(unmount=False)
+        rest_stop()
         raise
     pyfuse3.close()
-
+    rest_stop()
 
 start_charybdisfs(prog_name="charybdisfs")
