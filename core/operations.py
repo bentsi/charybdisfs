@@ -209,7 +209,7 @@ class CharybdisOperations(Operations):
 
     @faulty
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
-        return os.access(self.paths[inode], mode=mode)
+        return os.access(self.paths[inode], mode=mode, follow_symlinks=False)
 
     @faulty
     async def create(self,
@@ -458,7 +458,12 @@ class CharybdisOperations(Operations):
                       fields: SetattrFields,
                       fh: FileHandle,
                       ctx: RequestContext) -> EntryAttributes:
-        target = self.paths[inode] if fh is None else fh
+        if fh is None:
+            target = self.paths[inode]
+            follow_symlinks = {"follow_symlinks": False, }
+        else:
+            target = fh
+            follow_symlinks = {}
         try:
             if fields.update_size:
                 os.truncate(path=target, length=attr.st_size)
@@ -475,7 +480,7 @@ class CharybdisOperations(Operations):
             if fields.update_gid:
                 gid = attr.st_gid
             if uid != -1 or gid != -1:
-                os.chown(path=target, uid=uid, gid=gid, follow_symlinks=False)
+                os.chown(path=target, uid=uid, gid=gid, **follow_symlinks)
 
             atime_ns = mtime_ns = None
             if fields.update_atime != fields.update_mtime:
@@ -487,7 +492,7 @@ class CharybdisOperations(Operations):
             if fields.update_mtime:
                 mtime_ns = attr.st_mtime_ns
             if atime_ns is not None:  # at this point both atime_ns and mtime_ns are set or not set simultaneously.
-                os.utime(path=target, ns=(atime_ns, mtime_ns), follow_symlinks=fh is not None)
+                os.utime(path=target, ns=(atime_ns, mtime_ns), **follow_symlinks)
         except OSError as exc:
             raise FUSEError(exc.errno) from None
         return await self.getattr(inode=inode, ctx=ctx)
