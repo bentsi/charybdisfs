@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import stat
 import errno
 import random
@@ -184,6 +185,7 @@ class faulty:
             #   * args, kwargs  : arguments for FS call
             #
             # TODO: replace it with configurable faults.
+            sys.audit(f"charybdisfs", self.__name__, args, kwargs)
             if random.random() < instance.enospc_probability:
                 LOGGER.info("Raise ENOSPC for `%s' instead of passthru call", self.__name__)
                 raise FUSEError(errno.ENOSPC)
