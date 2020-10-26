@@ -30,7 +30,7 @@ class CharybdisFsClient:
         self.timeout = timeout
         self.use_https = use_https
         http = "http" if not self.use_https else "https"
-        self.base_url = f"{http}://{self.host}{str(self.port)}"
+        self.base_url = f"{http}://{self.host}:{str(self.port)}"
         self.connect()
         self.active_faults = []
 
