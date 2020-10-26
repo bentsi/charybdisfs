@@ -33,20 +33,23 @@ from core.pyfuse3_types import wrap as pyfuse3_types_wrap
 
 
 LOGGER = logging.getLogger("charybdisfs")
+AUDIT = logging.getLogger("charybdisfs.audit")
 
 
 def sys_audit_hook(name, args):
     if name == "charybdisfs.syscall":
-        LOGGER.debug(
+        AUDIT.debug(
             "CharybdisFS call made: name=%s, args=%s, kwargs=%s",
             args[0],
             [pyfuse3_types_wrap(arg) for arg in args[1]],
             {arg: pyfuse3_types_wrap(value) for arg, value in args[2].items()}
         )
     elif name == "charybdisfs.fault":
-        LOGGER.debug("CharybdisFS fault applied: %s", args[0])
+        AUDIT.debug("CharybdisFS fault applied: %s", args[0])
+    elif name == "charybdisfs.config":
+        AUDIT.debug("CharybdisFS configuration call `%s' made with args=%s", args[0], args[1:])
     elif name.startswith("os."):
-        LOGGER.debug("os call made: name=%s, args=%s", name[3:], args)
+        AUDIT.debug("os call made: name=%s, args=%s", name[3:], args)
 
 
 @click.command()
@@ -71,7 +74,7 @@ def start_charybdisfs(source: str,
                         format=">>> %(asctime)s -%(levelname).1s- %(name)s  %(message)s")
 
     if not rest_api and not mount:
-        raise click.UsageError(message="Can't run --no-rest-api and --no-mount simultaneously")
+        raise click.UsageError(message="can't run --no-rest-api and --no-mount simultaneously")
 
     if debug:
         sys.addaudithook(sys_audit_hook)
@@ -90,7 +93,7 @@ def start_charybdisfs(source: str,
 
     if mount:
         if source is None or target is None:
-            raise click.BadArgumentUsage("Both source and target parameters are required for CharybdisFS mount")
+            raise click.BadArgumentUsage("both source and target parameters are required for CharybdisFS mount")
 
         fuse_options = set(pyfuse3.default_options)
         fuse_options.add("fsname=charybdisfs")
