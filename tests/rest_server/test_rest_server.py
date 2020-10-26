@@ -23,8 +23,9 @@ from core.faults import LatencyFault, ErrorFault, SysCall, Status
 def rest_server():
     return rest_start()
 
+
 def test_add_error_fault():
-    error_fault = ErrorFault(sys_call = SysCall.WRITE, status= Status.NEW, error_no=errno.ENOSPC, randon=False)
+    error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.ENOSPC)
     s = requests.Session()
     base = 'http://127.0.0.1:8080/'
     resource = 'faults'
