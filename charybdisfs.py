@@ -26,9 +26,10 @@ import click
 import pyfuse3
 
 from core.faults import ErrorFault, SysCall
+from core.rest_api import rest_start, rest_stop, DEFAULT_PORT
 from core.operations import CharybdisOperations
 from core.configuration import Configuration
-from core.rest_api import rest_start, rest_stop, DEFAULT_PORT
+from core.pyfuse3_types import wrap as pyfuse3_types_wrap
 
 
 LOGGER = logging.getLogger("charybdisfs")
@@ -36,8 +37,13 @@ LOGGER = logging.getLogger("charybdisfs")
 
 def sys_audit_hook(name, args):
     if name == "charybdisfs.syscall":
-        LOGGER.debug("CharybdisFS call made: name=%s, args=%s, kwargs=%s", args[0], args[1], args[2])
-    if name == "charybdisfs.fault":
+        LOGGER.debug(
+            "CharybdisFS call made: name=%s, args=%s, kwargs=%s",
+            args[0],
+            [pyfuse3_types_wrap(arg) for arg in args[1]],
+            {arg: pyfuse3_types_wrap(value) for arg, value in args[2].items()}
+        )
+    elif name == "charybdisfs.fault":
         LOGGER.debug("CharybdisFS fault applied: %s", args[0])
     elif name.startswith("os."):
         LOGGER.debug("os call made: name=%s, args=%s", name[3:], args)
@@ -105,4 +111,6 @@ def start_charybdisfs(source: str,
         LOGGER.info("Interrupted by user...")
         sys.exit(0)
 
-start_charybdisfs(prog_name="charybdisfs")
+
+if __name__ == "__main__":
+    start_charybdisfs(prog_name="charybdisfs")
