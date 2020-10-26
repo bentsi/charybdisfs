@@ -87,6 +87,7 @@ class LatencyFault(BaseFault):
 
     def apply(self) -> None:
         time.sleep(self.delay / 1e6)
+        self.status = Status.APPLIED
 
 
 class ErrorFault(BaseFault):
@@ -95,4 +96,5 @@ class ErrorFault(BaseFault):
         super().__init__(sys_call=sys_call, probability=probability)
 
     def apply(self) -> None:
+        self.status = Status.APPLIED
         raise FUSEError(self.error_no)
