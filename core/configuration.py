@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import logging
 import threading
 from typing import NewType, Dict, Optional, List
@@ -32,6 +33,8 @@ class Configuration:
 
     @classmethod
     def add_fault(cls, uuid: UUID, fault: BaseFault) -> None:
+        sys.audit("charybdisfs.config", "add_fault", uuid, fault)
+
         with cls.syscalls_conf_lock:
             if uuid in cls.syscalls_conf:
                 raise ValueError(f"The fault with {uuid=} is set already.")
@@ -51,6 +54,8 @@ class Configuration:
 
     @classmethod
     def remove_fault(cls, uuid: UUID) -> Optional[BaseFault]:
+        sys.audit("charybdisfs.config", "remove_fault", uuid)
+
         with cls.syscalls_conf_lock:
             return cls.syscalls_conf.pop(uuid, None)
 
