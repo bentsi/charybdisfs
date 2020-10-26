@@ -65,10 +65,13 @@ class BaseFault:
         data = self.__dict__
         data.update({'classname': self.__class__.__name__})
         return json.dumps(data)
-    
+
     @classmethod
     def _deserialize(cls, json_repr):
         return cls(**json.loads(json_repr))
+
+    def apply(self, *args, **kwargs):
+        pass
 
 
 class LatencyFault(BaseFault):
