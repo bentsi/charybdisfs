@@ -32,8 +32,10 @@ LOGGER = logging.getLogger("charybdisfs")
 
 
 def sys_audit_hook(name, args):
-    if name == "charybdisfs":
+    if name == "charybdisfs.syscall":
         LOGGER.debug("CharybdisFS call made: name=%s, args=%s, kwargs=%s", args[0], args[1], args[2])
+    if name == "charybdisfs.fault":
+        LOGGER.debug("CharybdisFS fault applied: %s", args[0])
     elif name.startswith("os."):
         LOGGER.debug("os call made: name=%s, args=%s", name[3:], args)
 
@@ -50,10 +52,12 @@ def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability:
     if debug:
         sys.addaudithook(sys_audit_hook)
 
-   # Add ENOSPC fault to any FS call statically.  Should be removed in final version.
-    enospc_probability = min(0, max(100, round(enospc_probability * 100)))
+    # Add ENOSPC fault to any FS call statically.  Should be removed in final version.
+    enospc_probability = max(0, min(100, round(enospc_probability * 100)))
+    LOGGER.info("Going to add ENOSPC fault with probability %s%%", enospc_probability)
     enospc_fault = ErrorFault(sys_call=SysCall.ALL, probability=enospc_probability, error_no=errno.ENOSPC)
     Configuration.add_fault(uuid=str(uuid.uuid4()), fault=enospc_fault)
+    LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
 
     operations = CharybdisOperations(source=source)
 

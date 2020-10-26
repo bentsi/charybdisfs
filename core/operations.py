@@ -179,7 +179,7 @@ class faulty:
     def __get__(self, instance: CharybdisOperations, owner: Optional[Type[CharybdisOperations]] = None) -> Callable:
         @wraps(self.__func__)
         def wrapper(*args, **kwargs):
-            sys.audit(f"charybdisfs", self.__name__, args, kwargs)
+            sys.audit(f"charybdisfs.syscall", self.__name__, args, kwargs)
 
             # At this point we should have following things:
             #   * self.__func__ : original passthru FS call
@@ -189,7 +189,7 @@ class faulty:
 
             rand = random.randint(0, 99)  # 100 possible values.
 
-            for fault in Configuration.get_faults_by_syscall_type(SysCall(self.__name__)):
+            for fault in instance.faults.get_faults_by_sys_call(sys_call=SysCall(self.__name__)):
                 rand -= fault.probability
                 if rand < 0:
                     fault.apply()
@@ -209,6 +209,7 @@ class faulty:
 class CharybdisOperations(Operations):
     enable_writeback_cache = True
     runtime_errors = CharybdisRuntimeErrors()
+    faults = Configuration
 
     def __init__(self, source: str):
         super().__init__()
@@ -228,10 +229,10 @@ class CharybdisOperations(Operations):
                      ctx: RequestContext) -> Tuple[FileInfo, EntryAttributes]:
         path = self.paths.join(parent_inode, name)
         try:
-            fd = os.open(path, flags | os.O_CREAT | os.O_TRUNC)
+            fd = cast(FileDescriptor, os.open(path, flags | os.O_CREAT | os.O_TRUNC))
         except OSError as exc:
             raise FUSEError(exc.errno)
-        entry_attrs = self._get_entry_attrs(fd)
+        entry_attrs = self._get_entry_attrs(target=fd)
         inode = entry_attrs.st_ino
         self.paths[inode] = path
         self.descriptors[inode] = fd
@@ -285,7 +286,7 @@ class CharybdisOperations(Operations):
     async def getattr(self, inode: INode, ctx: RequestContext) -> EntryAttributes:
         if (target := self.descriptors.get(inode)) is None:
             target = self.paths[inode]
-        return self._get_entry_attrs(target)
+        return self._get_entry_attrs(target=target)
 
     @faulty
     async def getxattr(self, inode: INode, name: bytes, ctx: RequestContext) -> bytes:
@@ -318,7 +319,7 @@ class CharybdisOperations(Operations):
     @faulty
     async def lookup(self, parent_inode: INode, name: bytes, ctx: RequestContext) -> EntryAttributes:
         path = self.paths.join(parent_inode, name)
-        entry_attrs = self._get_entry_attrs(path)
+        entry_attrs = self._get_entry_attrs(target=path)
         if name not in (".", ".."):
             self.paths[entry_attrs.st_ino] = path
         return entry_attrs
@@ -335,7 +336,7 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        entry_attrs = self._get_entry_attrs(path)
+        entry_attrs = self._get_entry_attrs(target=path)
         self.paths[entry_attrs.st_ino] = path
         return entry_attrs
 
@@ -352,7 +353,7 @@ class CharybdisOperations(Operations):
             os.chown(path=path, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
-        entry_attrs = self._get_entry_attrs(path)
+        entry_attrs = self._get_entry_attrs(target=path)
         self.paths[entry_attrs.st_ino] = path
         return entry_attrs
 
@@ -388,7 +389,7 @@ class CharybdisOperations(Operations):
         dir_path = self.paths[inode]
         files = []
         for fname in pyfuse3.listdir(dir_path):
-            entry_attrs = self._get_entry_attrs(self.paths.join(inode, fname))
+            entry_attrs = self._get_entry_attrs(target=self.paths.join(inode, fname))
             if entry_attrs.st_ino > start_id:
                 files.append((entry_attrs.st_ino, fname, entry_attrs))
         for ino, fname, entry_attrs in sorted(files):
