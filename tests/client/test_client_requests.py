@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import errno
+import json
 import unittest
 
 from threading import Thread
@@ -55,8 +56,11 @@ class ClientRequestTest(unittest.TestCase):
         latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
         serialized = latency_fault._serialize()
 
-        self.assertTrue(serialized == '{"delay": 1000, "probability": 100, "sys_call": "write", "status": "new", '
-                                      '"classname": "LatencyFault"}')
+        serialized_ordered = dict(sorted(json.loads(serialized).items()))
+        serialized_ordered = json.dumps(serialized_ordered)
+
+        self.assertTrue(
+            serialized_ordered == '{"classname": "LatencyFault", "delay": 1000, "probability": 100, "status": "new", "sys_call": "write"}')
 
     def test_deserialize(self):
         latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
@@ -64,6 +68,7 @@ class ClientRequestTest(unittest.TestCase):
         deserialized = latency_fault._deserialize(serialized)
 
         self.assertTrue(isinstance(deserialized, LatencyFault))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -20,7 +20,6 @@ import time
 import json
 import logging
 from enum import Enum
-from json import JSONEncoder
 from typing import Generic, TypeVar, Type
 
 from pyfuse3 import FUSEError
@@ -85,14 +84,13 @@ class BaseFault(abc.ABC, Generic[T_fault]):
 
         self.status = Status.NEW
 
-    def _encode_default(self, obj: Enum) -> str:
-        return obj.value
-
     def _serialize(self):
-        JSONEncoder.default = self._encode_default
         data = self.__dict__
         data["classname"] = type(self).__name__
+        data["status"] = data["status"].value
+        data["sys_call"] = data["sys_call"].value
         LOGGER.debug("Serialize fault object %s to JSON:\n %s", data["classname"], data)
+
         return json.dumps(data)
 
     @classmethod
