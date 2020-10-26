@@ -98,7 +98,7 @@ class BaseFault(abc.ABC, Generic[T_fault]):
         json_dict: dict = json.loads(json_repr)
 
         # Remove non-existent parameters
-        json_dict.pop('classname')
+        json_dict.pop('classname', None)
 
         # Save parameter that not needed for class initialization
         status = Status(json_dict.pop('status'))
