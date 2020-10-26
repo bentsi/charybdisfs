@@ -49,8 +49,11 @@ class ClientRequestTest(unittest.TestCase):
             error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
             fault_id, response = fs_client.add_fault(fault=error_fault)
 
-        self.assertTrue(response.status_code == 200,
+        self.assertTrue(response.status_code == 200 and fault_id,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
+
+
+class FaultsSerializeTests(unittest.TestCase):
 
     def test_serialize(self):
         latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
