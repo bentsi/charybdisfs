@@ -15,13 +15,17 @@
 # limitations under the License.
 
 import sys
+import uuid
+import errno
 import logging
 
 import trio
 import click
 import pyfuse3
 
+from core.faults import ErrorFault, SysCall
 from core.operations import CharybdisOperations
+from core.configuration import Configuration
 
 
 LOGGER = logging.getLogger("charybdisfs")
@@ -39,14 +43,19 @@ def sys_audit_hook(name, args):
 @click.option('--enospc-probability', type=float, default=0.1)
 @click.argument("source", type=str)
 @click.argument("target", type=str)
-def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability) -> None:
+def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability: float) -> None:
     logging.basicConfig(stream=sys.stdout,
                         level=logging.DEBUG if debug else logging.INFO,
                         format=">>> %(asctime)s -%(levelname).1s- %(name)s  %(message)s")
     if debug:
         sys.addaudithook(sys_audit_hook)
 
-    operations = CharybdisOperations(source=source, enospc_probability=enospc_probability)
+   # Add ENOSPC fault to any FS call statically.  Should be removed in final version.
+    enospc_probability = min(0, max(100, round(enospc_probability * 100)))
+    enospc_fault = ErrorFault(sys_call=SysCall.ALL, probability=enospc_probability, error_no=errno.ENOSPC)
+    Configuration.add_fault(uuid=str(uuid.uuid4()), fault=enospc_fault)
+
+    operations = CharybdisOperations(source=source)
 
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add("fsname=charybdisfs")

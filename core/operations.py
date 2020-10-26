@@ -210,11 +210,10 @@ class CharybdisOperations(Operations):
     enable_writeback_cache = True
     runtime_errors = CharybdisRuntimeErrors()
 
-    def __init__(self, source: str, enospc_probability: float):
+    def __init__(self, source: str):
         super().__init__()
         self.paths = PathMapping(root=source.rstrip("/"))
         self.descriptors = FileDescriptorMapping()
-        self.enospc_probability = enospc_probability
 
     @faulty
     async def access(self, inode: INode, mode: FileMode, ctx: RequestContext) -> bool:
