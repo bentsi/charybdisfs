@@ -51,6 +51,19 @@ class ClientRequestTest(unittest.TestCase):
         self.assertTrue(response.status_code == 200,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
 
+    def test_serialize(self):
+        latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
+        serialized = latency_fault._serialize()
+
+        self.assertTrue(serialized == '{"delay": 1000, "probability": 100, "sys_call": "write", "status": "new", '
+                                      '"classname": "LatencyFault"}')
+
+    def test_deserialize(self):
+        latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
+        serialized = latency_fault._serialize()
+        deserialized = latency_fault._deserialize(serialized)
+
+        self.assertTrue(isinstance(deserialized, LatencyFault))
 
 if __name__ == '__main__':
     unittest.main()
