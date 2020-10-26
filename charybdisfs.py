@@ -17,8 +17,9 @@
 import sys
 import uuid
 import errno
+import atexit
 import logging
-from threading import Thread
+import threading
 
 import trio
 import click
@@ -27,7 +28,7 @@ import pyfuse3
 from core.faults import ErrorFault, SysCall
 from core.operations import CharybdisOperations
 from core.configuration import Configuration
-from core.rest_api import rest_start, rest_stop
+from core.rest_api import rest_start, rest_stop, DEFAULT_PORT
 
 
 LOGGER = logging.getLogger("charybdisfs")
@@ -44,41 +45,64 @@ def sys_audit_hook(name, args):
 
 @click.command()
 @click.option('--debug/--no-debug', default=False)
-@click.option('--enospc-probability', type=float, default=0.1)
-@click.argument("source", type=str)
-@click.argument("target", type=str)
-def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability: float) -> None:
+@click.option('--rest-api/--no-rest-api', default=True)
+@click.option('--rest-api-port', type=int, default=DEFAULT_PORT)
+@click.option('--mount/--no-mount', default=True)
+@click.option('--static-enospc/--no-static-enospc', default=False)
+@click.option('--static-enospc-probability', type=float, default=0.1)
+@click.argument("source", type=click.Path(exists=True, dir_okay=True), required=False)
+@click.argument("target", type=click.Path(exists=True, dir_okay=True), required=False)
+def start_charybdisfs(source: str,
+                      target: str,
+                      debug: bool,
+                      rest_api: bool,
+                      rest_api_port: int,
+                      mount: bool,
+                      static_enospc: bool,
+                      static_enospc_probability: float) -> None:
     logging.basicConfig(stream=sys.stdout,
                         level=logging.DEBUG if debug else logging.INFO,
                         format=">>> %(asctime)s -%(levelname).1s- %(name)s  %(message)s")
+
+    if not rest_api and not mount:
+        raise click.UsageError(message="Can't run --no-rest-api and --no-mount simultaneously")
+
     if debug:
         sys.addaudithook(sys_audit_hook)
 
-    # Add ENOSPC fault to any FS call statically.  Should be removed in final version.
-    enospc_probability = max(0, min(100, round(enospc_probability * 100)))
-    LOGGER.info("Going to add ENOSPC fault with probability %s%%", enospc_probability)
-    enospc_fault = ErrorFault(sys_call=SysCall.ALL, probability=enospc_probability, error_no=errno.ENOSPC)
-    Configuration.add_fault(uuid=str(uuid.uuid4()), fault=enospc_fault)
-    LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
+    if static_enospc:
+        static_enospc_probability = max(0, min(100, round(static_enospc_probability * 100)))
+        LOGGER.info("Going to add ENOSPC fault for all syscalls with probability %s%%", static_enospc_probability)
+        enospc_fault = ErrorFault(sys_call=SysCall.ALL, probability=static_enospc_probability, error_no=errno.ENOSPC)
+        Configuration.add_fault(uuid=str(uuid.uuid4()), fault=enospc_fault)
+        LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
 
-    operations = CharybdisOperations(source=source)
+    if rest_api:
+        server_thread = threading.Thread(target=rest_start, kwargs={"port": rest_api_port,}, daemon=True)
+        server_thread.start()
+        atexit.register(rest_stop)
 
-    fuse_options = set(pyfuse3.default_options)
-    fuse_options.add("fsname=charybdisfs")
-    if debug:
-        fuse_options.add("debug")
+    if mount:
+        if source is None or target is None:
+            raise click.BadArgumentUsage("Both source and target parameters are required for CharybdisFS mount")
 
-    server_thread = Thread(target=rest_start, daemon=True)
-    server_thread.start()
+        fuse_options = set(pyfuse3.default_options)
+        fuse_options.add("fsname=charybdisfs")
+        if debug:
+            fuse_options.add("debug")
 
-    pyfuse3.init(operations, target, fuse_options)
+        operations = CharybdisOperations(source=source)
+
+        pyfuse3.init(operations, target, fuse_options)
+        atexit.register(pyfuse3.close)
+
     try:
-        trio.run(pyfuse3.main)
-    except:
-        pyfuse3.close(unmount=False)
-        rest_stop()
-        raise
-    pyfuse3.close()
-    rest_stop()
+        if mount:
+            trio.run(pyfuse3.main)
+        else:
+            server_thread.join()
+    except KeyboardInterrupt:
+        LOGGER.info("Interrupted by user...")
+        sys.exit(0)
 
 start_charybdisfs(prog_name="charybdisfs")
