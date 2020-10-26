@@ -47,7 +47,7 @@ class CharybdisFsClient:
         self._session.close()
 
     def send_request(self, resource, method, json: str = None, fault_id: str = None) -> Response:
-        fault_id = f"/{fault_id}" if fault_id is None else ""
+        fault_id = f"/{fault_id}" if fault_id is not None else ""
         url = f"{self.base_url}/{resource}{fault_id}"
 
         LOGGER.debug("Send request to %s with json content:\n %s", url, json)
