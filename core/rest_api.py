@@ -19,6 +19,9 @@ from core.configuration import Configuration
 import core.faults
 
 
+DEFAULT_PORT = 8080
+
+
 class Root(object):
 
     @staticmethod
@@ -85,7 +88,7 @@ class Root(object):
             return {'fault_id': fault_id}
 
 
-def rest_start(port=8080):
+def rest_start(port=DEFAULT_PORT):
     cherrypy.config.update({
         'server.socket_host': '0.0.0.0',
         'server.socket_port': port,
@@ -94,4 +97,4 @@ def rest_start(port=8080):
 
 
 if __name__ == '__main__':
-    rest_start(port=8080)
+    rest_start(port=DEFAULT_PORT)
