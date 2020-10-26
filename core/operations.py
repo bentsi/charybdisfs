@@ -29,6 +29,9 @@ from pyfuse3 import \
     Operations, RequestContext, EntryAttributes, SetattrFields, FileInfo, StatvfsData, ReaddirToken, FUSEError, \
     RENAME_EXCHANGE, RENAME_NOREPLACE, ROOT_INODE
 
+from core.faults import SysCall
+from core.configuration import Configuration
+
 
 # Everything from manpage statvfs(2) except f_flag and f_sid.
 STATVFS_DATA_FIELDS = \
@@ -176,19 +179,23 @@ class faulty:
     def __get__(self, instance: CharybdisOperations, owner: Optional[Type[CharybdisOperations]] = None) -> Callable:
         @wraps(self.__func__)
         def wrapper(*args, **kwargs):
-            # This is an example of a fault.  It raises ENOSPC with 50% probability.
-            #
-            # At this point you should have following things:
+            sys.audit(f"charybdisfs", self.__name__, args, kwargs)
+
+            # At this point we should have following things:
             #   * self.__func__ : original passthru FS call
             #   * self.__name__ : name of FS call
-            #   * instance      : instance of CharibdisOperations class
+            #   * instance      : instance of CharybdisOperations class
             #   * args, kwargs  : arguments for FS call
-            #
-            # TODO: replace it with configurable faults.
-            sys.audit(f"charybdisfs", self.__name__, args, kwargs)
-            if random.random() < instance.enospc_probability:
-                LOGGER.info("Raise ENOSPC for `%s' instead of passthru call", self.__name__)
-                raise FUSEError(errno.ENOSPC)
+
+            rand = random.randint(0, 99)  # 100 possible values.
+
+            for fault in Configuration.get_faults_by_syscall_type(SysCall(self.__name__)):
+                rand -= fault.probability
+                if rand < 0:
+                    fault.apply()
+                    break
+
+            # Do the passthru call if no any fault raised an exception.
             return self.__func__(instance, *args, **kwargs)
         return wrapper
 
