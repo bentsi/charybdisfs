@@ -59,9 +59,9 @@ class Status(Enum):
 
 
 class BaseFault:
-    def __init__(self, sys_call: SysCall, path: str = "*", probability: int = 100):
-        self.path = path
-        self.probability = probability  # 0-1
+    def __init__(self, sys_call: SysCall, probability: int):
+        assert 0 <= probability <= 100
+        self.probability = probability
         self.sys_call = sys_call.value
         self.fault_id = 0
         self.status = Status.NEW
@@ -81,21 +81,18 @@ class BaseFault:
 
 
 class LatencyFault(BaseFault):
-    def __init__(self, sys_call: SysCall, path: str = "*", probability: int = 100,
-                 delay: float = 0):
+    def __init__(self, sys_call: SysCall, probability: int, delay: float = 0):
         self.delay = delay  # us - microseconds
-        super(LatencyFault, self).__init__(sys_call, path, probability)
+        super().__init__(sys_call=sys_call, probability=probability)
 
     def apply(self) -> None:
         time.sleep(self.delay / 1e6)
 
 
 class ErrorFault(BaseFault):
-    def __init__(self, error_no: int, random: bool, sys_call: SysCall, path: str = "*",
-                 probability: int = 100):
+    def __init__(self, sys_call: SysCall, probability: int, error_no: int):
         self.error_no = error_no
-        self.random = random
-        super(ErrorFault, self).__init__(sys_call, path, probability)
+        super().__init__(sys_call=sys_call, probability=probability)
 
     def apply(self) -> None:
         raise FUSEError(self.error_no)
