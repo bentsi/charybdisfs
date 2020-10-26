@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import logging
 
 import trio
@@ -22,13 +23,27 @@ import pyfuse3
 from core.operations import CharybdisOperations
 
 
+LOGGER = logging.getLogger("charybdisfs")
+
+
+def sys_audit_hook(name, args):
+    if name == "charybdisfs":
+        LOGGER.debug("CharybdisFS call made: name=%s, args=%s, kwargs=%s", args[0], args[1], args[2])
+    elif name.startswith("os."):
+        LOGGER.debug("os call made: name=%s, args=%s", name[3:], args)
+
+
 @click.command()
 @click.option('--debug/--no-debug', default=False)
-@click.option('--enospc-probability', type=float, default=0.5)
+@click.option('--enospc-probability', type=float, default=0.1)
 @click.argument("source", type=str)
 @click.argument("target", type=str)
 def start_charybdisfs(source: str, target: str, debug: bool, enospc_probability) -> None:
-    logging.basicConfig()
+    logging.basicConfig(stream=sys.stdout,
+                        level=logging.DEBUG if debug else logging.INFO,
+                        format=">>> %(asctime)s -%(levelname).1s- %(name)s  %(message)s")
+    if debug:
+        sys.addaudithook(sys_audit_hook)
 
     operations = CharybdisOperations(source=source, enospc_probability=enospc_probability)
 
