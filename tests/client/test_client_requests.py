@@ -15,18 +15,28 @@
 import errno
 import unittest
 
+from threading import Thread
+
+from core.rest_api import DEFAULT_PORT, rest_start
 from client.client import CharybdisFsClient
-from core.faults import LatencyFault, ErrorFault, SysCall, Status
-
-
-class MockRestAPI:
-    pass
+from core.faults import LatencyFault, ErrorFault, SysCall
 
 
 class ClientRequestTest(unittest.TestCase):
+    server_thread = None
+
+    @classmethod
+    def setUp(cls):
+        cls.server_thread = cls.run_server()
+
+    @staticmethod
+    def run_server():
+        server_thread = Thread(target=rest_start, daemon=True)
+        server_thread.start()
+        return server_thread
 
     def test_latency(self):
-        with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
+        with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
             latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
             fault_id, response = fs_client.add_fault(fault=latency_fault)
 
@@ -34,7 +44,7 @@ class ClientRequestTest(unittest.TestCase):
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
 
     def test_error(self):
-        with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
+        with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
             error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
             fault_id, response = fs_client.add_fault(fault=error_fault)
 

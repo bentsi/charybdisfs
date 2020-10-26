@@ -15,6 +15,8 @@ import json
 import logging
 import time
 from enum import Enum
+from json import JSONEncoder
+
 from pyfuse3 import FUSEError
 
 LOGGER = logging.getLogger(__name__)
@@ -64,8 +66,12 @@ class BaseFault:
         self.probability = probability
         self.sys_call = sys_call
         self.status = Status.NEW
-    
+
+    def _encode_default(self, obj: Enum):
+        return obj.value
+
     def _serialize(self):
+        JSONEncoder.default = self._encode_default
         data = self.__dict__
         data.update({'classname': self.__class__.__name__})
         LOGGER.debug("Serialize fault object %s to json:\n %s", self.__class__.__name__, str(data))
@@ -73,7 +79,22 @@ class BaseFault:
 
     @classmethod
     def _deserialize(cls, json_repr):
-        return cls(**json.loads(json_repr))
+        json_dict: dict = json.loads(json_repr)
+
+        # Remove non-existent parameters
+        json_dict.pop('classname')
+
+        # Save parameter that not needed for class initialization
+        status = Status(json_dict.pop('status'))
+
+        # Convert string to Enum object
+        sys_call = SysCall(json_dict.get('sys_call'))
+        json_dict['sys_call'] = sys_call
+
+        data = cls(**json_dict)
+
+        data.status = status
+        return data
 
     def apply(self) -> None:
         raise NotImplementedError

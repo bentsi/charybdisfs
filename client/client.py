@@ -31,7 +31,6 @@ class CharybdisFsClient:
         self.use_https = use_https
         http = "http" if not self.use_https else "https"
         self.base_url = f"{http}://{self.host}:{str(self.port)}"
-        self.connect()
         self.active_faults = []
 
     def __enter__(self):
@@ -43,11 +42,6 @@ class CharybdisFsClient:
 
         if exc_val:
             raise
-
-    def connect(self):
-        response = self._session.get(self.base_url)
-        if response.status_code != 200:
-            raise ConnectionError
 
     def close(self):
         self._session.close()
@@ -72,7 +66,7 @@ class CharybdisFsClient:
     def add_fault(self, fault) -> Tuple[str, Response]:
         data_json = fault._serialize()
 
-        response = self.send_request(resource=self.rest_resource, method ='POST', json=data_json)
+        response = self.send_request(resource=self.rest_resource, method='POST', json=data_json)
 
         fault_id = ''
         if response.status_code == 200:
@@ -83,7 +77,7 @@ class CharybdisFsClient:
         return fault_id, response
 
     def remove_fault(self, fault_id: str) -> Response:
-        response = self.send_request(resource=self.rest_resource, method ='DELETE', fault_id=fault_id)
+        response = self.send_request(resource=self.rest_resource, method='DELETE', fault_id=fault_id)
 
         if response.status_code == 200:
             self.active_faults.remove(fault_id)
@@ -91,7 +85,7 @@ class CharybdisFsClient:
         return response
 
     def get_active_fault(self) -> Response:
-        response = self.send_request(resource=self.rest_resource, method='POST')
+        response = self.send_request(resource=self.rest_resource, method='GET')
 
         return response
 
