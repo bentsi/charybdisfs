@@ -11,18 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from __future__ import annotations
+
+import abc
+import sys
+import time
 import json
 import logging
-import time
 from enum import Enum
 from json import JSONEncoder
+from typing import Generic, TypeVar, Type
 
 from pyfuse3 import FUSEError
+
 
 LOGGER = logging.getLogger(__name__)
 
 
 class SysCall(Enum):
+    UNKNOWN = ""
     ACCESS = "access"
     CREATE = "create"
     FORGET = "forget"
@@ -54,31 +62,41 @@ class SysCall(Enum):
     UNLINK = "unlink"
     ALL = "*"
 
+    @classmethod
+    def _missing_(cls, value: str) -> SysCall:
+        LOGGER.error("Unknown syscall: %s", value)
+        return cls.UNKNOWN
+
 
 class Status(Enum):
     NEW = "new"
     APPLIED = "applied"
 
 
-class BaseFault:
+T_fault = TypeVar("T_fault", bound="BaseFault")
+
+
+class BaseFault(abc.ABC, Generic[T_fault]):
     def __init__(self, sys_call: SysCall, probability: int):
+        self.sys_call = sys_call
+
         assert 0 <= probability <= 100
         self.probability = probability
-        self.sys_call = sys_call
+
         self.status = Status.NEW
 
-    def _encode_default(self, obj: Enum):
+    def _encode_default(self, obj: Enum) -> str:
         return obj.value
 
     def _serialize(self):
         JSONEncoder.default = self._encode_default
         data = self.__dict__
-        data.update({'classname': self.__class__.__name__})
-        LOGGER.debug("Serialize fault object %s to json:\n %s", self.__class__.__name__, str(data))
+        data["classname"] = type(self).__name__
+        LOGGER.debug("Serialize fault object %s to JSON:\n %s", data["classname"], data)
         return json.dumps(data)
 
     @classmethod
-    def _deserialize(cls, json_repr):
+    def _deserialize(cls: Type[T_fault], json_repr) -> T_fault:
         json_dict: dict = json.loads(json_repr)
 
         # Remove non-existent parameters
@@ -97,24 +115,31 @@ class BaseFault:
         return data
 
     def apply(self) -> None:
-        raise NotImplementedError
+        sys.audit("charybdisfs.fault", self)
+        self.status = Status.APPLIED
+        self._apply()
+
+    @abc.abstractmethod
+    def _apply(self) -> None:
+        ...
+
+    def __str__(self):
+        return f"{type(self).__name__}({', '.join(f'{key}={value}' for key, value in self.__dict__.items())})"
 
 
 class LatencyFault(BaseFault):
     def __init__(self, sys_call: SysCall, probability: int, delay: float = 0):
-        self.delay = delay  # us - microseconds
         super().__init__(sys_call=sys_call, probability=probability)
+        self.delay = delay  # us - microseconds
 
-    def apply(self) -> None:
+    def _apply(self) -> None:
         time.sleep(self.delay / 1e6)
-        self.status = Status.APPLIED
 
 
 class ErrorFault(BaseFault):
     def __init__(self, sys_call: SysCall, probability: int, error_no: int):
-        self.error_no = error_no
         super().__init__(sys_call=sys_call, probability=probability)
+        self.error_no = error_no
 
-    def apply(self) -> None:
-        self.status = Status.APPLIED
+    def _apply(self) -> None:
         raise FUSEError(self.error_no)

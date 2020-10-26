@@ -36,9 +36,16 @@ class Configuration:
             if uuid in cls.syscalls_conf:
                 raise ValueError(f"The fault with {uuid=} is set already.")
 
-            if sum(f.probability for f in cls.get_faults_by_syscall_type(fault.sys_call)) + fault.probability > 100:
-                raise ValueError(f"Can't add {fault=} with {uuid=} because fault probability for FS call "
-                                 f"`{fault.sys_call.value}' will exceed 100%")
+            if fault.sys_call == SysCall.ALL:  # we try to add wildcard syscall, so we need to check all syscalls.
+                all_sys_calls = {fault.sys_call for fault in cls.get_all_faults()}
+            else:
+                all_sys_calls = {fault.sys_call,}
+
+            for sys_call in all_sys_calls:
+                faults_by_sys_call = cls.get_faults_by_sys_call(sys_call=sys_call)
+                if sum(f.probability for f in faults_by_sys_call) + fault.probability > 100:
+                    raise ValueError(f"Can't add {fault=} with {uuid=} because fault probability for FS call "
+                                     f"`{sys_call.value}' will exceed 100%")
 
             cls.syscalls_conf[uuid] = fault
 
@@ -53,9 +60,15 @@ class Configuration:
             return cls.syscalls_conf.get(uuid)
 
     @classmethod
-    def get_faults_by_syscall_type(cls, syscall_type: SysCall) -> List[BaseFault]:
+    def get_faults_by_sys_call(cls, sys_call: SysCall) -> List[BaseFault]:
         with cls.syscalls_conf_lock:
-            return [fault for fault in cls.syscalls_conf.values() if fault.sys_call in (syscall_type, SysCall.ALL,)]
+            # For sys_call == SysCall.ALL it returns faults with exactly SysCall.ALL type, not all.
+            return [fault for fault in cls.syscalls_conf.values() if fault.sys_call in (sys_call, SysCall.ALL,)]
+
+    @classmethod
+    def get_all_faults(cls) -> List[BaseFault]:
+        with cls.syscalls_conf_lock:
+            return list(cls.syscalls_conf.values())
 
     @classmethod
     def get_all_faults_ids(cls) -> List[UUID]:
