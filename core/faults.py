@@ -121,7 +121,7 @@ class BaseFault(abc.ABC, Generic[T_fault]):
     def _apply(self) -> None:
         ...
 
-    def __str__(self):
+    def __repr__(self):
         return f"{type(self).__name__}({', '.join(f'{key}={value}' for key, value in self.__dict__.items())})"
 
 
