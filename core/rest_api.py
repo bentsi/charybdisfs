@@ -100,6 +100,8 @@ def rest_start(port=DEFAULT_PORT):
     })
     cherrypy.quickstart(Root())
 
+def rest_stop():
+    cherrypy.engine.exit()
 
 if __name__ == '__main__':
     rest_start(port=DEFAULT_PORT)
