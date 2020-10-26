@@ -55,6 +55,26 @@ class ClientRequestTest(unittest.TestCase):
         self.assertTrue(response.status_code == 200 and fault_id,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
 
+    def test_remove_fault(self):
+        with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
+            error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
+            fault_id, response = fs_client.add_fault(fault=error_fault)
+
+            response = fs_client.remove_fault(fault_id=fault_id)
+
+        self.assertTrue(response.status_code == 200,
+                        f'Request failed. Status: {response.status_code}\n Text: {response.text}')
+
+    def test_get_active_faults(self):
+        with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
+            error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
+            fault_id, response = fs_client.add_fault(fault=error_fault)
+
+            response = fs_client.get_active_fault()
+
+        self.assertTrue(response.status_code == 200 and response.text == '{"faults ids": ["%s"]}' % fault_id,
+                        f'Request failed. Status: {response.status_code}\n Text: {response.text}')
+
 
 class FaultsSerializeTests(unittest.TestCase):
 
