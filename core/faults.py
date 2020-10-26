@@ -20,7 +20,7 @@ import time
 import json
 import logging
 from enum import Enum
-from typing import Generic, TypeVar, Type
+from typing import Generic, TypeVar, Type, Optional, final
 
 from pyfuse3 import FUSEError
 
@@ -71,58 +71,81 @@ class Status(Enum):
     NEW = "new"
     APPLIED = "applied"
 
+    @classmethod
+    def _missing_(cls, value: Optional[str]) -> Status:
+        LOGGER.error("Unknown status: %s, return Status.NEW instead", value)
+        return cls.NEW
+
 
 T_fault = TypeVar("T_fault", bound="BaseFault")
 
 
 class BaseFault(abc.ABC, Generic[T_fault]):
+    _fault_registry = {}
+
+    def __init_subclass__(cls):
+        cls._fault_registry[cls.__name__] = cls
+
     def __init__(self, sys_call: SysCall, probability: int):
         self.sys_call = sys_call
 
-        assert 0 <= probability <= 100
+        assert 0 <= probability <= 100, "A fault probability should be an integer in the interval [0, 100]"
         self.probability = probability
 
         self.status = Status.NEW
 
-    def _serialize(self):
-        data = self.__dict__
-        data["classname"] = type(self).__name__
-        data["status"] = data["status"].value
-        data["sys_call"] = data["sys_call"].value
-        LOGGER.debug("Serialize fault object %s to JSON:\n %s", data["classname"], data)
-
-        return json.dumps(data)
-
-    @classmethod
-    def _deserialize(cls: Type[T_fault], json_repr) -> T_fault:
-        json_dict: dict = json.loads(json_repr)
-
-        # Remove non-existent parameters
-        json_dict.pop('classname', None)
-
-        # Save parameter that not needed for class initialization
-        status = Status(json_dict.pop('status'))
-
-        # Convert string to Enum object
-        sys_call = SysCall(json_dict.get('sys_call'))
-        json_dict['sys_call'] = sys_call
-
-        data = cls(**json_dict)
-
-        data.status = status
-        return data
+    @abc.abstractmethod
+    def _apply(self) -> None:
+        ...
 
     def apply(self) -> None:
         sys.audit("charybdisfs.fault", self)
         self.status = Status.APPLIED
         self._apply()
 
-    @abc.abstractmethod
-    def _apply(self) -> None:
-        ...
+    def to_json(self) -> str:
+        data = {
+            "fault_type": type(self).__name__,
+            **vars(self),
+            "sys_call": self.sys_call.value,
+            "status": self.status.value,
+        }
+        LOGGER.debug("%s object serialized to JSON: %s", data["fault_type"], data)
+        return json.dumps(data)
+
+    @classmethod
+    def from_dict(cls: Type[T_fault], data: dict) -> Optional[T_fault]:
+        status = Status(data.pop("status", None))
+        data["sys_call"] = SysCall(data.get("sys_call"))
+        try:
+            fault = cls(**data)
+        except TypeError:
+            LOGGER.error("Unable to create a %s object from params: %s", cls.__name__, data)
+            return None
+        fault.status = status
+        return fault
+
+    @final
+    @classmethod
+    def from_json(cls, json_data: str) -> Optional[BaseFault]:
+        try:
+            return json.loads(json_data, object_hook=cls._json_object_hook)
+        except json.JSONDecodeError as exc:
+            LOGGER.error("Unable to decode a JSON data: %s", exc)
+            return None
+
+    @classmethod
+    def _json_object_hook(cls, data: dict) -> Optional[BaseFault]:
+        if (fault_type := cls._fault_registry.get(data.pop("fault_type", None))) is None:
+            LOGGER.error("Unable to create a fault object from a JSON data: %s", data)
+            return None
+        return fault_type.from_dict(data)
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(f'{key}={value}' for key, value in self.__dict__.items())})"
+
+    def __eq__(self, other):
+        return type(self) == type(other) and vars(self) == vars(other)
 
 
 class LatencyFault(BaseFault):
@@ -141,3 +164,7 @@ class ErrorFault(BaseFault):
 
     def _apply(self) -> None:
         raise FUSEError(self.error_no)
+
+
+def create_fault_from_json(json_data: str) -> BaseFault:
+    return BaseFault.from_json(json_data=json_data)

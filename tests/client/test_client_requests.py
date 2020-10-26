@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import errno
-import json
 import time
+import errno
 import unittest
 
 from threading import Thread
 
-from client.client import CharybdisFsClient
 from core.faults import LatencyFault, ErrorFault, SysCall
-from core.rest_api import DEFAULT_PORT, rest_start, rest_stop
+from core.rest_api import DEFAULT_PORT, start_charybdisfs_api_server, stop_charydisfs_api_server
+from client.client import CharybdisFsClient
 
 
 class ClientRequestTest(unittest.TestCase):
@@ -29,13 +28,13 @@ class ClientRequestTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.server_thread = Thread(target=rest_start, daemon=True)
+        cls.server_thread = Thread(target=start_charybdisfs_api_server, daemon=True)
         cls.server_thread.start()
         time.sleep(3)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        rest_stop()
+        stop_charydisfs_api_server()
 
     def test_latency(self):
         with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
@@ -70,28 +69,8 @@ class ClientRequestTest(unittest.TestCase):
 
             response = fs_client.get_active_fault()
 
-        self.assertTrue(response.status_code == 200 and response.text == '{"faults ids": ["%s"]}' % fault_id,
+        self.assertTrue(response.status_code == 200 and response.text == '{"faults_ids": ["%s"]}' % fault_id,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
-
-
-class FaultsSerializeTests(unittest.TestCase):
-
-    def test_serialize(self):
-        latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
-        serialized = latency_fault._serialize()
-
-        serialized_ordered = dict(sorted(json.loads(serialized).items()))
-        serialized_ordered = json.dumps(serialized_ordered)
-
-        self.assertTrue(
-            serialized_ordered == '{"classname": "LatencyFault", "delay": 1000, "probability": 100, "status": "new", "sys_call": "write"}')
-
-    def test_deserialize(self):
-        latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
-        serialized = latency_fault._serialize()
-        deserialized = latency_fault._deserialize(serialized)
-
-        self.assertTrue(isinstance(deserialized, LatencyFault))
 
 
 if __name__ == '__main__':

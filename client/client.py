@@ -15,7 +15,7 @@
 import logging
 from typing import Tuple
 
-from requests import Session, Request, Response, ConnectionError
+from requests import Session, Request, Response
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class CharybdisFsClient:
         return param_value
 
     def add_fault(self, fault) -> Tuple[str, Response]:
-        data_json = fault._serialize()
+        data_json = fault.to_json()
 
         response = self.send_request(resource=self.rest_resource, method='POST', json=data_json)
 
