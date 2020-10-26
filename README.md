@@ -42,3 +42,5 @@ Note that bind mounts can be done only on the same filesystem.
     $ mkdir /path/to/.shadow_source_dir
     $ mount --bind /path/to/source_dir /path/to/.shadow_source_dir
     $ python -m charybdisfs /path/to/.shadow_source_dir /path/to/source_dir
+
+Unfortunately, you can't use this trick with Docker container mount propogation together.
