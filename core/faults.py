@@ -13,7 +13,9 @@
 # limitations under the License.
 import json
 import logging
+import time
 from enum import Enum
+from pyfuse3 import FUSEError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -74,8 +76,8 @@ class BaseFault:
     def _deserialize(cls, json_repr):
         return cls(**json.loads(json_repr))
 
-    def apply(self, *args, **kwargs):
-        pass
+    def apply(self) -> None:
+        raise NotImplementedError
 
 
 class LatencyFault(BaseFault):
@@ -84,6 +86,9 @@ class LatencyFault(BaseFault):
         self.delay = delay  # us - microseconds
         super(LatencyFault, self).__init__(sys_call, path, probability)
 
+    def apply(self) -> None:
+        time.sleep(self.delay / 1e6)
+
 
 class ErrorFault(BaseFault):
     def __init__(self, error_no: int, random: bool, sys_call: SysCall, path: str = "*",
@@ -91,3 +96,6 @@ class ErrorFault(BaseFault):
         self.error_no = error_no
         self.random = random
         super(ErrorFault, self).__init__(sys_call, path, probability)
+
+    def apply(self) -> None:
+        raise FUSEError(self.error_no)
