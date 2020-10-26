@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import logging
 from enum import Enum
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SysCall(Enum):
@@ -64,6 +67,7 @@ class BaseFault:
     def _serialize(self):
         data = self.__dict__
         data.update({'classname': self.__class__.__name__})
+        LOGGER.debug("Serialize fault object %s to json:\n %s", self.__class__.__name__, str(data))
         return json.dumps(data)
 
     @classmethod
