@@ -12,100 +12,71 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-import functools
-import json
+import sys
 import uuid
-import cherrypy
 import logging
-import traceback
-from core.configuration import Configuration
-import core.faults
+from typing import Optional
 
-LOGGER = logging.getLogger(__name__)
+import cherrypy
+
+from core.faults import create_fault_from_json
+from core.configuration import Configuration
+
 
 DEFAULT_PORT = 8080
 
+LOGGER = logging.getLogger(__name__)
 
-class Root(object):
 
+class CharybdisFsApiServer:
     @staticmethod
-    def create_object_from_json_extract_classname(jsonobj):
-        jsonloaded = json.loads(jsonobj)
-        cls = jsonloaded.get('classname', None)
-        if cls is None:
-            LOGGER.debug(f'did not found classname field in json')
-            return NameError('classname'), None
-        LOGGER.debug(cls)
-        clsptr = getattr(core.faults, cls)
-        jsonloaded.pop('classname')
-        if clsptr is None:
-            LOGGER.debug(f'did not found class {cls}')
-            return NameError('cls'), None
-        fault = None
-        try:
-            fault = clsptr._deserialize(json.dumps(jsonloaded))
-        except BaseException as ex:
-            LOGGER.debug(f"exception {ex} when trying to deserialize {jsonloaded} cls={cls}")
-            return ex, None
-        return None, fault
-
-    @staticmethod
-    def add_fault(uuid, faultobj):
-        if faultobj is None:
-            LOGGER.debug(f"fail creating obj from uuid={uuid} obj={faultobj})")
-            return "0"
-        Configuration.add_fault(uuid, faultobj)
-        return uuid
-
-    def remove_fault(uuid):
-        uuid_removed = Configuration.remove_fault(uuid)
-        return uuid_removed
+    def generate_new_uuid() -> str:
+        return str(uuid.uuid4())
 
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def faults(self, fault_id=None):
+    def faults(self, fault_id: Optional[str] = None):
         method = cherrypy.request.method
-        params = cherrypy.request.params
-        jsonobj = None if method == 'DELETE' or method == 'GET' else cherrypy.request.json
-        LOGGER.debug(f'fault_id={fault_id}')
-        LOGGER.debug(f'method={method}')
-        LOGGER.debug(f'params={params}')
-        LOGGER.debug(f'json={jsonobj}')
-        if method == 'GET':
+
+        sys.audit("charybdisfs.api", method, fault_id, cherrypy.request)
+
+        if method == "GET":
             if fault_id is None:
-                ids = {'faults ids': Configuration.get_all_faults_ids()}
-                return ids
-            else:
-                return {'fault_id': 'fault_id', 'fault': Configuration.get_fault_by_uuid(fault_id)._serialize()}
-        if method == 'POST' or method == 'CREATE' or method == 'PUT':
-            fault_id = str(uuid.uuid4())
-            ex, faultobj = Root.create_object_from_json_extract_classname(jsonobj)
-            fault_id = Root.add_fault(fault_id, faultobj)
-            if ex is not None:
-                cherrypy.response.status = 500
-                return {'fault_id': fault_id, 'exception': str(ex)}
-            return {'fault_id': fault_id}
+                return {"faults_ids": Configuration.get_all_faults_ids()}
+            if fault := Configuration.get_fault_by_uuid(uuid=fault_id):
+                return {"fault_id": fault_id, "fault": fault.to_json()}
+            raise cherrypy.NotFound()
 
-        if method == 'DELETE':
-            removed_uuid = Configuration.remove_fault(fault_id)
-            if removed_uuid:
-                cherrypy.response.status = 200
-            else:
-                cherrypy.response.status = 404
-            return {'fault_id': fault_id}
+        elif method in ("POST", "CREATE", "PUT",):
+            if fault_id:
+                raise cherrypy.HTTPError(message="Replacing of a fault is not supported")
+            if (fault := create_fault_from_json(json_data=cherrypy.request.json)) is None:
+                raise cherrypy.HTTPError(message="Unable to create a fault from provided JSON data")
+            try:
+                fault_id = self.generate_new_uuid()
+                Configuration.add_fault(uuid=fault_id, fault=fault)
+            except ValueError as exc:
+                raise cherrypy.HTTPError(message=f"Unable to add a fault {fault} with {fault_id=}: {exc}") from None
+            return {"fault_id": fault_id}
 
-def rest_start(port=DEFAULT_PORT):
+        elif method == "DELETE":
+            if Configuration.remove_fault(uuid=fault_id):
+                return {"fault_id": fault_id}
+            raise cherrypy.NotFound()
+
+
+def start_charybdisfs_api_server(port: int = DEFAULT_PORT) -> None:
     cherrypy.config.update({
-        'server.socket_host': '0.0.0.0',
-        'server.socket_port': port
+        "global": {
+            "server.socket_host": "0.0.0.0",
+            "server.socket_port": port,
+            "server.thread_pool": 1,
+            "engine.autoreload.on": False,
+        }
     })
-    cherrypy.quickstart(Root())
+    cherrypy.quickstart(CharybdisFsApiServer())
 
-def rest_stop():
+
+def stop_charydisfs_api_server() -> None:
     cherrypy.engine.exit()
-
-
-if __name__ == '__main__':
-    rest_start(port=DEFAULT_PORT)

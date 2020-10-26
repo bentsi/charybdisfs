@@ -26,7 +26,7 @@ import click
 import pyfuse3
 
 from core.faults import ErrorFault, SysCall
-from core.rest_api import rest_start, rest_stop, DEFAULT_PORT
+from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server, DEFAULT_PORT
 from core.operations import CharybdisOperations
 from core.configuration import Configuration
 from core.pyfuse3_types import wrap as pyfuse3_types_wrap
@@ -34,6 +34,7 @@ from core.pyfuse3_types import wrap as pyfuse3_types_wrap
 
 LOGGER = logging.getLogger("charybdisfs")
 AUDIT = logging.getLogger("charybdisfs.audit")
+LOG_FORMAT = ">>> %(asctime)s -%(levelname).1s- [%(processName)s:%(threadName)s] %(name)s  %(message)s"
 
 
 def sys_audit_hook(name, args):
@@ -48,6 +49,8 @@ def sys_audit_hook(name, args):
         AUDIT.debug("CharybdisFS fault applied: %s", args[0])
     elif name == "charybdisfs.config":
         AUDIT.debug("CharybdisFS configuration call `%s' made with args=%s", args[0], args[1:])
+    elif name == "charybdisfs.api":
+        AUDIT.debug("CharybdisFS API %s called for fault_id=%s: %s", args[0], args[1], args[2].params)
     elif name.startswith("os."):
         AUDIT.debug("os call made: name=%s, args=%s", name[3:], args)
 
@@ -69,9 +72,7 @@ def start_charybdisfs(source: str,
                       mount: bool,
                       static_enospc: bool,
                       static_enospc_probability: float) -> None:
-    logging.basicConfig(stream=sys.stdout,
-                        level=logging.DEBUG if debug else logging.INFO,
-                        format=">>> %(asctime)s -%(levelname).1s- %(name)s  %(message)s")
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG if debug else logging.INFO, format=LOG_FORMAT)
 
     if not rest_api and not mount:
         raise click.UsageError(message="can't run --no-rest-api and --no-mount simultaneously")
@@ -87,9 +88,13 @@ def start_charybdisfs(source: str,
         LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
 
     if rest_api:
-        server_thread = threading.Thread(target=rest_start, kwargs={"port": rest_api_port, }, daemon=True)
-        server_thread.start()
-        atexit.register(rest_stop)
+        api_server_thread = \
+            threading.Thread(target=start_charybdisfs_api_server,
+                             kwargs={"port": rest_api_port, },
+                             name="RestServerApi",
+                             daemon=True)
+        api_server_thread.start()
+        atexit.register(stop_charydisfs_api_server)
 
     if mount:
         if source is None or target is None:
@@ -109,7 +114,7 @@ def start_charybdisfs(source: str,
         if mount:
             trio.run(pyfuse3.main)
         else:
-            server_thread.join()
+            api_server_thread.join()
     except KeyboardInterrupt:
         LOGGER.info("Interrupted by user...")
         sys.exit(0)
