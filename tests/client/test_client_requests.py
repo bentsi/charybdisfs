@@ -14,27 +14,30 @@
 
 import errno
 import json
+import time
 import unittest
 
 from threading import Thread
 
-from core.rest_api import DEFAULT_PORT, rest_start
 from client.client import CharybdisFsClient
 from core.faults import LatencyFault, ErrorFault, SysCall
+from core.rest_api import DEFAULT_PORT, rest_start, rest_stop
 
 
 class ClientRequestTest(unittest.TestCase):
     server_thread = None
 
     @classmethod
-    def setUp(cls):
-        cls.server_thread = cls.run_server()
+    def setUpClass(cls) -> None:
+        cls.server_thread = Thread(target=rest_start, daemon=True)
+        cls.server_thread.start()
 
-    @staticmethod
-    def run_server():
-        server_thread = Thread(target=rest_start, daemon=True)
-        server_thread.start()
-        return server_thread
+    @classmethod
+    def tearDownClass(cls) -> None:
+        rest_stop()
+
+    def setUp(self) -> None:
+        time.sleep(10)
 
     def test_latency(self):
         with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
