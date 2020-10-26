@@ -31,13 +31,11 @@ class ClientRequestTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.server_thread = Thread(target=rest_start, daemon=True)
         cls.server_thread.start()
+        time.sleep(3)
 
     @classmethod
     def tearDownClass(cls) -> None:
         rest_stop()
-
-    def setUp(self) -> None:
-        time.sleep(10)
 
     def test_latency(self):
         with CharybdisFsClient('127.0.0.1', DEFAULT_PORT) as fs_client:
