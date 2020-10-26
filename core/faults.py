@@ -16,8 +16,35 @@ from enum import Enum
 
 
 class SysCall(Enum):
-    WRITE = "write"
+    ACCESS = "access"
+    CREATE = "create"
+    FORGET = "forget"
+    FLUSH = "flush"
+    FSYNC = "fsync"
+    FSYNCDIR = "fsyncdir"
+    GETATTR = "getattr"
+    GETXATTR = "getxattr"
+    LINK = "link"
+    LISTXATTR = "listxattr"
+    LOOKUP = "lookup"
+    MKDIR = "mkdir"
+    MKNOD = "mknod"
+    OPEN = "open"
+    OPENDIR = "opendir"
     READ = "read"
+    READDIR = "readdir"
+    READLINK = "readlink"
+    RELEASE = "release"
+    RELEASEDIR = "releasedir"
+    REMOVEXATTR = "removexattr"
+    RENAME = "rename"
+    RMDIR = "rmdir"
+    SETATTR = "setattr"
+    SETXATTR = "setxattr"
+    STATFS = "statfs"
+    SYMLINK = "symlink"
+    WRITE = "write"
+    UNLINK = "unlink"
     ALL = "*"
 
 
@@ -31,6 +58,8 @@ class BaseFault:
         self.path = path
         self.probability = probability  # 0-1
         self.sys_call = sys_call.value
+        self.fault_id = 0
+        self.status = Status.NEW
     
     def _serialize(self):
         data = self.__dict__
@@ -45,8 +74,9 @@ class BaseFault:
 class LatencyFault(BaseFault):
     def __init__(self, sys_call: SysCall, path: str = "*", probability: float = 1,
                  delay: float = 0):
-        self.delay = delay # us - microseconds
+        self.delay = delay  # us - microseconds
         super(LatencyFault, self).__init__(sys_call, path, probability)
+
 
 class ErrorFault(BaseFault):
     def __init__(self, error_no: int, random: bool, sys_call: SysCall, path: str = "*",
