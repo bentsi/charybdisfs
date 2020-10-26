@@ -54,7 +54,7 @@ class Status(Enum):
 
 
 class BaseFault:
-    def __init__(self, sys_call: SysCall, path: str = "*", probability: float = 1):
+    def __init__(self, sys_call: SysCall, path: str = "*", probability: int = 100):
         self.path = path
         self.probability = probability  # 0-1
         self.sys_call = sys_call.value
@@ -75,7 +75,7 @@ class BaseFault:
 
 
 class LatencyFault(BaseFault):
-    def __init__(self, sys_call: SysCall, path: str = "*", probability: float = 1,
+    def __init__(self, sys_call: SysCall, path: str = "*", probability: int = 100,
                  delay: float = 0):
         self.delay = delay  # us - microseconds
         super(LatencyFault, self).__init__(sys_call, path, probability)
@@ -83,7 +83,7 @@ class LatencyFault(BaseFault):
 
 class ErrorFault(BaseFault):
     def __init__(self, error_no: int, random: bool, sys_call: SysCall, path: str = "*",
-                 probability: float = 1):
+                 probability: int = 100):
         self.error_no = error_no
         self.random = random
         super(ErrorFault, self).__init__(sys_call, path, probability)
