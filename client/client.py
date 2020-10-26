@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import uuid
+import logging
+from typing import Tuple
 
 from requests import Session, Request, Response, ConnectionError
+
+LOGGER = logging.getLogger(__name__)
 
 
 class CharybdisFsClient:
@@ -53,21 +56,31 @@ class CharybdisFsClient:
         fault_id = f"/{fault_id}" if fault_id is None else ""
         url = f"{self.base_url}/{resource}{fault_id}"
 
+        LOGGER.debug("Send request to %s with json content:\n %s", url, json)
         req = Request(method=method, url=url, json=json)
         prepped_request = self._session.prepare_request(request=req)
         response = self._session.send(request=prepped_request, timeout=self.timeout)
+        LOGGER.debug("Response status: %s; reason: %s", response.status_code, response.reason)
         return response
 
-    def add_fault(self, fault) -> Response:
+    def get_param_from_response(self, response: Response, param: str) -> str:
+        json_content = response.json()
+        param_value = json_content[param]
+        LOGGER.debug("Param %s value from request is: %s", param, param_value)
+        return param_value
+
+    def add_fault(self, fault) -> Tuple[str, Response]:
         data_json = fault._serialize()
-        fault_id = str(uuid.uuid4())
 
-        response = self.send_request(resource=self.rest_resource, method ='POST', fault_id=fault_id, json=data_json)
+        response = self.send_request(resource=self.rest_resource, method ='POST', json=data_json)
 
+        fault_id = ''
         if response.status_code == 200:
-            self.active_faults.append(fault_id)
+            fault_id = self.get_param_from_response(response, 'fault_id')
+            if fault_id:
+                self.active_faults.append(fault_id)
 
-        return response
+        return fault_id, response
 
     def remove_fault(self, fault_id: str) -> Response:
         response = self.send_request(resource=self.rest_resource, method ='DELETE', fault_id=fault_id)

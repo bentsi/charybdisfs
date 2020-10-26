@@ -28,7 +28,7 @@ class ClientRequestTest(unittest.TestCase):
     def test_latency(self):
         with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
             latency_fault = LatencyFault(sys_call=SysCall.WRITE)
-            response = fs_client.add_fault(fault=latency_fault)
+            fault_id, response = fs_client.add_fault(fault=latency_fault)
 
         self.assertTrue(response.status_code == 200,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
@@ -36,7 +36,7 @@ class ClientRequestTest(unittest.TestCase):
     def test_error(self):
         with CharybdisFsClient('127.0.0.1', 8080) as fs_client:
             latency_fault = ErrorFault(error_no=errno.EADV, random=False, sys_call=SysCall.WRITE)
-            response = fs_client.add_fault(fault=latency_fault)
+            fault_id, response = fs_client.add_fault(fault=latency_fault)
 
         self.assertTrue(response.status_code == 200,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
