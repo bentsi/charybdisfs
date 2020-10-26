@@ -44,3 +44,50 @@ Note that bind mounts can be done only on the same filesystem.
     $ python -m charybdisfs /path/to/.shadow_source_dir /path/to/source_dir
 
 Unfortunately, you can't use this trick with Docker container mount propogation together.
+
+## How to use CharybdisFS python client
+
+Import all libs
+
+    from client.client import CharybdisFsClient
+    from core.faults import LatencyFault, ErrorFault, SysCall
+    import errno
+
+Connect to the rest server
+
+    fs_client = CharybdisFsClient('127.0.0.1', 8080)
+
+Create fault object and add it - succeeded
+
+    latency_fault = LatencyFault(sys_call=SysCall.WRITE, probability=100, delay=1000)
+    fault_id, resp = fs_client.add_fault(latency_fault)
+
+Expected result:
+
+    fault_id
+    '3af4e469-5e36-4d6c-99a1-1919944e6419'
+    resp
+    <Response [200]>
+
+Create fault object and add it - failed
+
+    error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
+    f_id2, resp2 = fs_client.add_fault(error_fault)
+    
+Expected result:
+
+    f_id2
+    ''
+    resp2
+    <Response [500]>
+
+Remove fault
+
+    l = fs_client.remove_fault('3af4e469-5e36-4d6c-99a1-1919944e6419')
+
+Expected result:
+
+    l
+    <Response [200]>
+    l.text
+    '{"fault_id": "3af4e469-5e36-4d6c-99a1-1919944e6419"}'
