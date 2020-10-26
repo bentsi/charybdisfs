@@ -63,7 +63,6 @@ class BaseFault:
         assert 0 <= probability <= 100
         self.probability = probability
         self.sys_call = sys_call.value
-        self.fault_id = 0
         self.status = Status.NEW
     
     def _serialize(self):
