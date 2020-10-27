@@ -34,5 +34,5 @@ def start_api_server():
 @pytest.mark.usefixtures("start_api_server")
 def test_add_error_fault():
     error_fault = ErrorFault(sys_call=SysCall.WRITE, error_no=errno.ENOSPC, probability=100)
-    response = requests.post("http://127.0.0.1:8080/faults", json=error_fault.to_json())
+    response = requests.post("http://127.0.0.1:8080/faults", json=error_fault.to_dict())
     assert response.ok, f"Failed to add an {error_fault=}: {response.json()}"

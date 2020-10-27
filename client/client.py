@@ -12,83 +12,82 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import logging
-from typing import Tuple
+from typing import List, Tuple, Optional, NewType, Literal
 
 from requests import Session, Request, Response
+
+from core.faults import BaseFault
+
 
 LOGGER = logging.getLogger(__name__)
 
 
+FaultID = NewType("FaultID", str)
+
+
 class CharybdisFsClient:
-    rest_resource = 'faults'
+    rest_resource = "faults"
 
     def __init__(self, host: str, port: int, timeout: int = 10, use_https: bool = False):
-        self._session = Session()
         self.host = host
         self.port = port
         self.timeout = timeout
         self.use_https = use_https
-        http = "http" if not self.use_https else "https"
-        self.base_url = f"{http}://{self.host}:{str(self.port)}"
-        self.active_faults = []
 
-    def __enter__(self):
+        self.base_url = f"{'https' if self.use_https else 'http'}://{self.host}:{self.port}"
+        self.active_faults: List[FaultID] = []
+
+        self._session = Session()
+
+    def __enter__(self) -> CharybdisFsClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.remove_all_active_faults()
         self.close()
 
-        if exc_val:
-            raise
-
-    def close(self):
+    def close(self) -> None:
         self._session.close()
 
-    def send_request(self, resource, method, json: str = None, fault_id: str = None) -> Response:
-        fault_id = f"/{fault_id}" if fault_id is not None else ""
-        url = f"{self.base_url}/{resource}{fault_id}"
+    def send_request(self,
+                     method: Literal["GET", "POST", "DELETE"] = "GET",
+                     fault_id: FaultID = FaultID(""),
+                     data: Optional[dict] = None) -> Response:
+        url = f"{self.base_url}/{self.rest_resource}/{fault_id}".rstrip("/")
 
-        LOGGER.debug("Send request to %s with json content:\n %s", url, json)
-        req = Request(method=method, url=url, json=json)
+        LOGGER.debug("Send request to %s with data: %s", url, data)
+        req = Request(method=method, url=url, json=data)
         prepped_request = self._session.prepare_request(request=req)
         response = self._session.send(request=prepped_request, timeout=self.timeout)
+
         LOGGER.debug("Response status: %s; reason: %s", response.status_code, response.reason)
         return response
 
-    def get_param_from_response(self, response: Response, param: str) -> str:
-        json_content = response.json()
-        param_value = json_content[param]
-        LOGGER.debug("Param %s value from request is: %s", param, param_value)
-        return param_value
+    def add_fault(self, fault: BaseFault) -> Tuple[FaultID, Response]:
+        response = self.send_request(method="POST", data=fault.to_dict())
 
-    def add_fault(self, fault) -> Tuple[str, Response]:
-        data_json = fault.to_json()
+        if not response.ok:
+            return FaultID(""), response
 
-        response = self.send_request(resource=self.rest_resource, method='POST', json=data_json)
-
-        fault_id = ''
-        if response.status_code == 200:
-            fault_id = self.get_param_from_response(response, 'fault_id')
-            if fault_id:
-                self.active_faults.append(fault_id)
+        if fault_id := FaultID(response.json().get("fault_id", "")):
+            self.active_faults.append(fault_id)
 
         return fault_id, response
 
-    def remove_fault(self, fault_id: str) -> Response:
-        response = self.send_request(resource=self.rest_resource, method='DELETE', fault_id=fault_id)
+    def remove_fault(self, fault_id: FaultID) -> Response:
+        response = self.send_request(method="DELETE", fault_id=fault_id)
 
-        if response.status_code == 200:
+        if response.ok:
             self.active_faults.remove(fault_id)
 
         return response
 
-    def get_active_fault(self) -> Response:
-        response = self.send_request(resource=self.rest_resource, method='GET')
+    def get_active_faults(self) -> Response:
+        return self.send_request()
 
-        return response
-
-    def remove_all_active_faults(self):
+    def remove_all_active_faults(self) -> None:
         for fault_id in self.active_faults:
             self.remove_fault(fault_id=fault_id)

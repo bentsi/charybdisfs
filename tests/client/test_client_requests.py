@@ -67,7 +67,7 @@ class ClientRequestTest(unittest.TestCase):
             error_fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.EADV)
             fault_id, response = fs_client.add_fault(fault=error_fault)
 
-            response = fs_client.get_active_fault()
+            response = fs_client.get_active_faults()
 
         self.assertTrue(response.status_code == 200 and response.text == '{"faults_ids": ["%s"]}' % fault_id,
                         f'Request failed. Status: {response.status_code}\n Text: {response.text}')
