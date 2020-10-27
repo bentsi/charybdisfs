@@ -20,7 +20,7 @@ from threading import Thread
 
 from core.faults import LatencyFault, ErrorFault, SysCall
 from core.rest_api import DEFAULT_PORT, start_charybdisfs_api_server, stop_charydisfs_api_server
-from client.client import CharybdisFsClient
+from client import CharybdisFsClient
 
 
 class ClientRequestTest(unittest.TestCase):

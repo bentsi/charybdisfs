@@ -41,15 +41,15 @@ Note that bind mounts can be done only on the same filesystem.
 
     $ mkdir /path/to/.shadow_source_dir
     $ mount --bind /path/to/source_dir /path/to/.shadow_source_dir
-    $ python -m charybdisfs /path/to/.shadow_source_dir /path/to/source_dir
+    $ ./charybdisfs /path/to/.shadow_source_dir /path/to/source_dir
 
 Unfortunately, you can't use this trick with Docker container mount propogation together.
 
-## How to use CharybdisFS python client
+## How to use CharybdisFS Python client
 
 Import all libs
 
-    from client.client import CharybdisFsClient
+    from client import CharybdisFsClient
     from core.faults import LatencyFault, ErrorFault, SysCall
     import errno
 
