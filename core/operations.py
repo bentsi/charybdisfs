@@ -229,7 +229,9 @@ class CharybdisOperations(Operations):
                      ctx: RequestContext) -> Tuple[FileInfo, EntryAttributes]:
         path = self.paths.join(parent_inode, name)
         try:
-            fd = cast(FileDescriptor, os.open(path, flags | os.O_CREAT | os.O_TRUNC))
+            fd = cast(FileDescriptor,
+                      os.open(path=path, flags=flags | os.O_CREAT | os.O_TRUNC, mode=(mode & ~ctx.umask)))
+            os.fchown(fd=fd, uid=ctx.uid, gid=ctx.gid)
         except OSError as exc:
             raise FUSEError(exc.errno)
         entry_attrs = self._get_entry_attrs(target=fd)
