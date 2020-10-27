@@ -14,15 +14,11 @@
 
 from __future__ import annotations
 
-import logging
-from typing import List, Tuple, Optional, NewType, Literal
+from typing import List, Tuple, NewType
 
-from requests import Session, Request, Response
+import requests
 
 from core.faults import BaseFault
-
-
-LOGGER = logging.getLogger(__name__)
 
 
 FaultID = NewType("FaultID", str)
@@ -40,34 +36,17 @@ class CharybdisFsClient:
         self.base_url = f"{'https' if self.use_https else 'http'}://{self.host}:{self.port}"
         self.active_faults: List[FaultID] = []
 
-        self._session = Session()
-
     def __enter__(self) -> CharybdisFsClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.remove_all_active_faults()
-        self.close()
 
-    def close(self) -> None:
-        self._session.close()
+    def url(self, fault_id: FaultID = FaultID("")) -> str:
+        return f"{self.base_url}/{self.rest_resource}/{fault_id}".rstrip("/")
 
-    def send_request(self,
-                     method: Literal["GET", "POST", "DELETE"] = "GET",
-                     fault_id: FaultID = FaultID(""),
-                     data: Optional[dict] = None) -> Response:
-        url = f"{self.base_url}/{self.rest_resource}/{fault_id}".rstrip("/")
-
-        LOGGER.debug("Send request to %s with data: %s", url, data)
-        req = Request(method=method, url=url, json=data)
-        prepped_request = self._session.prepare_request(request=req)
-        response = self._session.send(request=prepped_request, timeout=self.timeout)
-
-        LOGGER.debug("Response status: %s; reason: %s", response.status_code, response.reason)
-        return response
-
-    def add_fault(self, fault: BaseFault) -> Tuple[FaultID, Response]:
-        response = self.send_request(method="POST", data=fault.to_dict())
+    def add_fault(self, fault: BaseFault) -> Tuple[FaultID, requests.Response]:
+        response = requests.post(url=self.url(), json=fault.to_dict(), timeout=self.timeout)
 
         if not response.ok:
             return FaultID(""), response
@@ -77,16 +56,16 @@ class CharybdisFsClient:
 
         return fault_id, response
 
-    def remove_fault(self, fault_id: FaultID) -> Response:
-        response = self.send_request(method="DELETE", fault_id=fault_id)
+    def remove_fault(self, fault_id: FaultID) -> requests.Response:
+        response = requests.delete(url=self.url(fault_id=fault_id), timeout=self.timeout)
 
         if response.ok:
             self.active_faults.remove(fault_id)
 
         return response
 
-    def get_active_faults(self) -> Response:
-        return self.send_request()
+    def get_active_faults(self) -> requests.Response:
+        return requests.get(url=self.url(), timeout=self.timeout)
 
     def remove_all_active_faults(self) -> None:
         for fault_id in self.active_faults:
