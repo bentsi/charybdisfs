@@ -19,7 +19,7 @@ from typing import Optional
 
 import cherrypy
 
-from core.faults import create_fault_from_json
+from core.faults import create_fault_from_dict
 from core.configuration import Configuration
 
 
@@ -45,13 +45,13 @@ class CharybdisFsApiServer:
             if fault_id is None:
                 return {"faults_ids": Configuration.get_all_faults_ids()}
             if fault := Configuration.get_fault_by_uuid(uuid=fault_id):
-                return {"fault_id": fault_id, "fault": fault.to_json()}
+                return {"fault_id": fault_id, "fault": fault.to_dict()}
             raise cherrypy.NotFound()
 
         elif method in ("POST", "CREATE", "PUT",):
             if fault_id:
                 raise cherrypy.HTTPError(message="Replacing of a fault is not supported")
-            if (fault := create_fault_from_json(json_data=cherrypy.request.json)) is None:
+            if (fault := create_fault_from_dict(data=cherrypy.request.json)) is None:
                 raise cherrypy.HTTPError(message="Unable to create a fault from provided JSON data")
             try:
                 fault_id = self.generate_new_uuid()

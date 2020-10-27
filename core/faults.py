@@ -17,10 +17,10 @@ from __future__ import annotations
 import abc
 import sys
 import time
-import json
+import inspect
 import logging
-from enum import Enum
-from typing import Generic, TypeVar, Type, Optional, final
+from enum import Enum, auto
+from typing import Optional, Dict, Any, Union, NamedTuple, Type, Set, final
 
 from pyfuse3 import FUSEError
 
@@ -28,37 +28,42 @@ from pyfuse3 import FUSEError
 LOGGER = logging.getLogger(__name__)
 
 
-class SysCall(Enum):
+class AutoLowerName(Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return name.lower()
+
+
+class SysCall(AutoLowerName):
     UNKNOWN = ""
-    ACCESS = "access"
-    CREATE = "create"
-    FORGET = "forget"
-    FLUSH = "flush"
-    FSYNC = "fsync"
-    FSYNCDIR = "fsyncdir"
-    GETATTR = "getattr"
-    GETXATTR = "getxattr"
-    LINK = "link"
-    LISTXATTR = "listxattr"
-    LOOKUP = "lookup"
-    MKDIR = "mkdir"
-    MKNOD = "mknod"
-    OPEN = "open"
-    OPENDIR = "opendir"
-    READ = "read"
-    READDIR = "readdir"
-    READLINK = "readlink"
-    RELEASE = "release"
-    RELEASEDIR = "releasedir"
-    REMOVEXATTR = "removexattr"
-    RENAME = "rename"
-    RMDIR = "rmdir"
-    SETATTR = "setattr"
-    SETXATTR = "setxattr"
-    STATFS = "statfs"
-    SYMLINK = "symlink"
-    WRITE = "write"
-    UNLINK = "unlink"
+    ACCESS = auto()
+    CREATE = auto()
+    FORGET = auto()
+    FLUSH = auto()
+    FSYNC = auto()
+    FSYNCDIR = auto()
+    GETATTR = auto()
+    GETXATTR = auto()
+    LINK = auto()
+    LISTXATTR = auto()
+    LOOKUP = auto()
+    MKDIR = auto()
+    MKNOD = auto()
+    OPEN = auto()
+    OPENDIR = auto()
+    READ = auto()
+    READDIR = auto()
+    READLINK = auto()
+    RELEASE = auto()
+    RELEASEDIR = auto()
+    REMOVEXATTR = auto()
+    RENAME = auto()
+    RMDIR = auto()
+    SETATTR = auto()
+    SETXATTR = auto()
+    STATFS = auto()
+    SYMLINK = auto()
+    WRITE = auto()
+    UNLINK = auto()
     ALL = "*"
 
     @classmethod
@@ -67,9 +72,9 @@ class SysCall(Enum):
         return cls.UNKNOWN
 
 
-class Status(Enum):
-    NEW = "new"
-    APPLIED = "applied"
+class Status(AutoLowerName):
+    NEW = auto()
+    APPLIED = auto()
 
     @classmethod
     def _missing_(cls, value: Optional[str]) -> Status:
@@ -77,17 +82,26 @@ class Status(Enum):
         return cls.NEW
 
 
-T_fault = TypeVar("T_fault", bound="BaseFault")
+class FaultRegistryItem(NamedTuple):
+    fault_type: Type[BaseFault] = None
+    fault_args: Set[str] = None
 
 
-class BaseFault(abc.ABC, Generic[T_fault]):
-    _fault_registry = {}
+class FaultRegistry(Dict[str, FaultRegistryItem]):
+    def __missing__(self, key) -> FaultRegistryItem:
+        return FaultRegistryItem()
+
+
+class BaseFault(abc.ABC):
+    _fault_registry = FaultRegistry()
 
     def __init_subclass__(cls):
-        cls._fault_registry[cls.__name__] = cls
+        cls._fault_registry[cls.__name__] = \
+            FaultRegistryItem(fault_type=cls, fault_args=set(inspect.signature(cls).parameters))
 
-    def __init__(self, sys_call: SysCall, probability: int):
-        self.sys_call = sys_call
+    def __init__(self, sys_call: Union[str, SysCall], probability: int):
+        self.sys_call = SysCall(sys_call)
+        assert self.sys_call != SysCall.UNKNOWN, f"Try to create a fault for an unknown syscall: `{sys_call}'"
 
         assert 0 <= probability <= 100, "A fault probability should be an integer in the interval [0, 100]"
         self.probability = probability
@@ -103,43 +117,36 @@ class BaseFault(abc.ABC, Generic[T_fault]):
         self.status = Status.APPLIED
         self._apply()
 
-    def to_json(self) -> str:
-        data = {
+    def to_dict(self) -> Dict[str, Any]:
+        return {
             "fault_type": type(self).__name__,
             **vars(self),
             "sys_call": self.sys_call.value,
             "status": self.status.value,
         }
-        LOGGER.debug("%s object serialized to JSON: %s", data["fault_type"], data)
-        return json.dumps(data)
-
-    @classmethod
-    def from_dict(cls: Type[T_fault], data: dict) -> Optional[T_fault]:
-        status = Status(data.pop("status", None))
-        data["sys_call"] = SysCall(data.get("sys_call"))
-        try:
-            fault = cls(**data)
-        except TypeError:
-            LOGGER.error("Unable to create a %s object from params: %s", cls.__name__, data)
-            return None
-        fault.status = status
-        return fault
 
     @final
     @classmethod
-    def from_json(cls, json_data: str) -> Optional[BaseFault]:
-        try:
-            return json.loads(json_data, object_hook=cls._json_object_hook)
-        except json.JSONDecodeError as exc:
-            LOGGER.error("Unable to decode a JSON data: %s", exc)
+    def from_dict(cls, data: Dict[str, Any]) -> Optional[BaseFault]:
+        fault_type_name = data.get("fault_type")
+        fault_type, fault_args = cls._fault_registry[fault_type_name]
+
+        if fault_type is None:
+            LOGGER.error("Unknown fault type: %s", fault_type_name)
             return None
 
-    @classmethod
-    def _json_object_hook(cls, data: dict) -> Optional[BaseFault]:
-        if (fault_type := cls._fault_registry.get(data.pop("fault_type", None))) is None:
-            LOGGER.error("Unable to create a fault object from a JSON data: %s", data)
+        try:
+            fault = fault_type(**{arg: data[arg] for arg in set(data) & fault_args})
+        except TypeError as exc:
+            LOGGER.error("Unable to create a %s object: %s", fault_type_name, exc)
             return None
-        return fault_type.from_dict(data)
+
+        fault.update_internal_state_from_dict(data)
+
+        return fault
+
+    def update_internal_state_from_dict(self, data: Dict[str, Any]) -> None:
+        self.status = Status(data.get("status"))
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(f'{key}={value}' for key, value in self.__dict__.items())})"
@@ -166,5 +173,5 @@ class ErrorFault(BaseFault):
         raise FUSEError(self.error_no)
 
 
-def create_fault_from_json(json_data: str) -> BaseFault:
-    return BaseFault.from_json(json_data=json_data)
+def create_fault_from_dict(data: Dict[str, Any]) -> Optional[BaseFault]:
+    return BaseFault.from_dict(data=data)

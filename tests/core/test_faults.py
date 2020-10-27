@@ -17,19 +17,19 @@ from unittest.mock import patch
 import pytest
 import pyfuse3
 
-from core.faults import LatencyFault, ErrorFault, SysCall, Status, create_fault_from_json
+from core.faults import LatencyFault, ErrorFault, SysCall, Status, create_fault_from_dict
 
 
-def test_latency_fault_to_json():
-    assert LatencyFault(sys_call=SysCall.ALL, probability=50).to_json() == \
-           '{"fault_type": "LatencyFault", "sys_call": "*", "probability": 50, "status": "new", "delay": 0}'
-    assert LatencyFault(sys_call=SysCall.WRITE, probability=75, delay=1000).to_json() == \
-           '{"fault_type": "LatencyFault", "sys_call": "write", "probability": 75, "status": "new", "delay": 1000}'
+def test_latency_fault_to_dict():
+    assert LatencyFault(sys_call=SysCall.ALL, probability=50).to_dict() == \
+           {"fault_type": "LatencyFault", "sys_call": "*", "probability": 50, "status": "new", "delay": 0}
+    assert LatencyFault(sys_call=SysCall.WRITE, probability=75, delay=1000).to_dict() == \
+           {"fault_type": "LatencyFault", "sys_call": "write", "probability": 75, "status": "new", "delay": 1000}
 
 
-def test_latency_fault_from_json():
-    fault = create_fault_from_json(
-        '{"fault_type": "LatencyFault", "sys_call": "write", "probability": 75, "status": "applied", "delay": 1000}')
+def test_latency_fault_from_dict():
+    fault = create_fault_from_dict(
+        {"fault_type": "LatencyFault", "sys_call": "write", "probability": 75, "status": "applied", "delay": 1000})
     assert isinstance(fault, LatencyFault)
     assert fault.sys_call == SysCall.WRITE
     assert fault.probability == 75
@@ -49,19 +49,19 @@ def test_latency_fault_apply():
     assert fault.status == Status.APPLIED
 
 
-def test_latency_fault_to_json_and_back():
+def test_latency_fault_to_dict_and_back():
     fault = LatencyFault(sys_call=SysCall.WRITE, probability=50, delay=666)
-    assert fault == create_fault_from_json(fault.to_json())
+    assert fault == create_fault_from_dict(fault.to_dict())
 
 
-def test_error_fault_to_json():
-    assert ErrorFault(sys_call=SysCall.ALL, probability=50, error_no=666).to_json() == \
-           '{"fault_type": "ErrorFault", "sys_call": "*", "probability": 50, "status": "new", "error_no": 666}'
+def test_error_fault_to_dict():
+    assert ErrorFault(sys_call=SysCall.ALL, probability=50, error_no=666).to_dict() == \
+           {"fault_type": "ErrorFault", "sys_call": "*", "probability": 50, "status": "new", "error_no": 666}
 
 
-def test_error_fault_from_json():
-    fault = create_fault_from_json(
-        '{"fault_type": "ErrorFault", "sys_call": "write", "probability": 75, "status": "applied", "error_no": 13}')
+def test_error_fault_from_dict():
+    fault = create_fault_from_dict(
+        {"fault_type": "ErrorFault", "sys_call": "write", "probability": 75, "status": "applied", "error_no": 13})
     assert isinstance(fault, ErrorFault)
     assert fault.sys_call == SysCall.WRITE
     assert fault.probability == 75
@@ -81,12 +81,12 @@ def test_error_fault_apply():
     assert exc.value.errno == 8
 
 
-def test_unknown_fault_from_json():
-    fault = create_fault_from_json(
-        '{"fault_type": "UnknownFault", "sys_call": "write", "probability": 75, "status": "applied", "error_no": 13}')
+def test_unknown_fault_from_dict():
+    fault = create_fault_from_dict(
+        {"fault_type": "UnknownFault", "sys_call": "write", "probability": 75, "status": "applied", "error_no": 13})
     assert fault is None
 
 
-def test_error_fault_to_json_and_back():
+def test_error_fault_to_dict_and_back():
     fault = ErrorFault(sys_call=SysCall.ALL, probability=100, error_no=8)
-    assert fault == create_fault_from_json(fault.to_json())
+    assert fault == create_fault_from_dict(fault.to_dict())
