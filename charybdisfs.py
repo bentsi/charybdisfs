@@ -56,15 +56,15 @@ def sys_audit_hook(name, args):
 
 
 @click.command()
-@click.option('--debug/--no-debug', default=False)
-@click.option('--rest-api/--no-rest-api', default=True)
-@click.option('--rest-api-port', type=int, default=DEFAULT_PORT)
-@click.option('--mount/--no-mount', default=True)
-@click.option('--static-enospc/--no-static-enospc', default=False)
-@click.option('--static-enospc-probability', type=float, default=0.1)
+@click.option("--debug/--no-debug", default=False)
+@click.option("--rest-api/--no-rest-api", default=True)
+@click.option("--rest-api-port", type=int, default=DEFAULT_PORT)
+@click.option("--mount/--no-mount", default=True)
+@click.option("--static-enospc/--no-static-enospc", default=False)
+@click.option("--static-enospc-probability", type=float, default=0.1)
 @click.argument("source", type=click.Path(exists=True, dir_okay=True), required=False)
 @click.argument("target", type=click.Path(exists=True, dir_okay=True), required=False)
-def start_charybdisfs(source: str,
+def start_charybdisfs(source: str,  # noqa: C901  # ignore "is too complex" message
                       target: str,
                       debug: bool,
                       rest_api: bool,

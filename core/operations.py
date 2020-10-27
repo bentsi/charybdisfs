@@ -463,7 +463,7 @@ class CharybdisOperations(Operations):
             self.runtime_errors.unknown_path(inode=inode, path=path)
 
     @faulty
-    async def setattr(self,
+    async def setattr(self,  # noqa: C901  # ignore "is too complex" message
                       inode: INode,
                       attr: EntryAttributes,
                       fields: SetattrFields,

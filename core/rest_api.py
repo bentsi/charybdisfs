@@ -36,7 +36,7 @@ class CharybdisFsApiServer:
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def faults(self, fault_id: Optional[str] = None):
+    def faults(self, fault_id: Optional[str] = None):  # noqa: C901  # ignore "is too complex" message
         method = cherrypy.request.method
 
         sys.audit("charybdisfs.api", method, fault_id, cherrypy.request)
@@ -67,15 +67,15 @@ class CharybdisFsApiServer:
 
 
 def start_charybdisfs_api_server(port: int = DEFAULT_PORT) -> None:
-    cherrypy.config.update({
+    conf = {
         "global": {
             "server.socket_host": "0.0.0.0",
             "server.socket_port": port,
             "server.thread_pool": 1,
             "engine.autoreload.on": False,
-        }
-    })
-    cherrypy.quickstart(CharybdisFsApiServer())
+        },
+    }
+    cherrypy.quickstart(root=CharybdisFsApiServer(), config=conf)
 
 
 def stop_charydisfs_api_server() -> None:
