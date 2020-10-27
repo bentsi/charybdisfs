@@ -56,21 +56,21 @@ def test_add_fault(configuration):
 
     # Another fault with different type.
     configuration.add_fault(uuid=fault2_uuid, fault=fault2)
-    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2,}
+    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, }
 
     # SysCall.ALL which exceeds probability of some SysCall.
     with pytest.raises(ValueError):
         configuration.add_fault(uuid=fault3_uuid, fault=fault3)
-    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2,}
+    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, }
 
     # Exactly 100% probability.
     configuration.add_fault(uuid=fault3_uuid, fault=fault4)
-    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4,}
+    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4, }
 
     # Exceed SysCall.WRITE probability.
     with pytest.raises(ValueError):
         configuration.add_fault(uuid=fault4_uuid, fault=fault5)
-    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4,}
+    assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4, }
 
 
 def test_remove_fault(configuration):

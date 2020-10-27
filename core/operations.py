@@ -179,7 +179,7 @@ class faulty:
     def __get__(self, instance: CharybdisOperations, owner: Optional[Type[CharybdisOperations]] = None) -> Callable:
         @wraps(self.__func__)
         def wrapper(*args, **kwargs):
-            sys.audit(f"charybdisfs.syscall", self.__name__, args, kwargs)
+            sys.audit("charybdisfs.syscall", self.__name__, args, kwargs)
 
             # At this point we should have following things:
             #   * self.__func__ : original passthru FS call

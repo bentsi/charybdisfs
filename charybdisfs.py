@@ -87,7 +87,7 @@ def start_charybdisfs(source: str,
         LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
 
     if rest_api:
-        server_thread = threading.Thread(target=rest_start, kwargs={"port": rest_api_port,}, daemon=True)
+        server_thread = threading.Thread(target=rest_start, kwargs={"port": rest_api_port, }, daemon=True)
         server_thread.start()
         atexit.register(rest_stop)
 

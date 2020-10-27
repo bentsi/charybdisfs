@@ -42,7 +42,7 @@ class Configuration:
             if fault.sys_call == SysCall.ALL:  # we try to add wildcard syscall, so we need to check all syscalls.
                 all_sys_calls = {fault.sys_call for fault in cls.get_all_faults()}
             else:
-                all_sys_calls = {fault.sys_call,}
+                all_sys_calls = {fault.sys_call, }
 
             for sys_call in all_sys_calls:
                 faults_by_sys_call = cls.get_faults_by_sys_call(sys_call=sys_call)
