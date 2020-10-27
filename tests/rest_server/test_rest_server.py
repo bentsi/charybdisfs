@@ -12,35 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 import errno
+import threading
 
 import pytest
 import requests
 
 from core.faults import ErrorFault, SysCall
-from core.rest_api import start_charybdisfs_api_server
+from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server
 
 
-# server bingup in other process
-#@pytest.fixture(scope="module")
-# def rest_server():
-#     start_charybdisfs_api_server()
+@pytest.fixture(scope="module")
+def start_api_server():
+    threading.Thread(target=start_charybdisfs_api_server, daemon=True).start()
+    time.sleep(1)
+    yield
+    stop_charydisfs_api_server()
 
 
-@pytest.mark.skip(reason='first need pass on deserialize')
+@pytest.mark.usefixtures("start_api_server")
 def test_add_error_fault():
     error_fault = ErrorFault(sys_call=SysCall.WRITE, error_no=errno.ENOSPC, probability=100)
-    s = requests.Session()
-    base = 'http://127.0.0.1:8080/'
-    resource = 'faults'
-    try:
-        json_obj = error_fault.to_json()
-
-        response = s.post(f'{base}{resource}', json=json_obj)
-        if response.status_code != 200:
-            error_string = f"Failed to send fault ={errno}. Returned {response.json()}"
-            raise ValueError(error_string)
-    except Exception as e:
-        print(f"Exception {e}")
-        raise
-    assert(response.status_code == 200)
+    response = requests.post("http://127.0.0.1:8080/faults", json=error_fault.to_json())
+    assert response.ok, f"Failed to add an {error_fault=}: {response.json()}"
