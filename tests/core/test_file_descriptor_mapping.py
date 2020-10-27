@@ -24,7 +24,7 @@ def mapping():
 
 def test_get_from_empty(mapping):
     with pytest.raises(KeyError):
-        path = mapping[42]
+        return mapping[42]
 
 
 def test_set_once(mapping):
