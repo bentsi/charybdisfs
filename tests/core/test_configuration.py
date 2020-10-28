@@ -12,28 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import uuid
 import errno
 
 import pytest
 
 from core.faults import ErrorFault, SysCall
-from core.configuration import Configuration
+from core.rest_api import CharybdisFsApiServer
 
 
-@pytest.fixture
-def configuration():
-    syscalls_conf = Configuration.syscalls_conf
-    Configuration.syscalls_conf = {}
-    yield Configuration
-    Configuration.syscalls_conf = syscalls_conf
+new_uuid = CharybdisFsApiServer.generate_new_uuid
 
 
 def test_add_fault(configuration):
-    fault1_uuid = str(uuid.uuid4())
-    fault2_uuid = str(uuid.uuid4())
-    fault3_uuid = str(uuid.uuid4())
-    fault4_uuid = str(uuid.uuid4())
+    fault1_uuid = new_uuid()
+    fault2_uuid = new_uuid()
+    fault3_uuid = new_uuid()
+    fault4_uuid = new_uuid()
     fault1 = ErrorFault(sys_call=SysCall.WRITE, probability=41, error_no=errno.ENOSPC)
     fault2 = ErrorFault(sys_call=SysCall.READ, probability=60, error_no=errno.ENOSPC)
     fault3 = ErrorFault(sys_call=SysCall.ALL, probability=50, error_no=errno.ENOSPC)
@@ -74,7 +68,7 @@ def test_add_fault(configuration):
 
 
 def test_remove_fault(configuration):
-    fault_uuid = str(uuid.uuid4())
+    fault_uuid = new_uuid()
     fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.ENOSPC)
     configuration.add_fault(uuid=fault_uuid, fault=fault)
     assert configuration.remove_fault(uuid=fault_uuid) == fault
@@ -83,8 +77,8 @@ def test_remove_fault(configuration):
 
 
 def test_get_fault_by_uuid(configuration):
-    fault_uuid = str(uuid.uuid4())
-    another_fault_uuid = str(uuid.uuid4())
+    fault_uuid = new_uuid()
+    another_fault_uuid = new_uuid()
     fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.ENOSPC)
     configuration.add_fault(uuid=fault_uuid, fault=fault)
     assert configuration.get_fault_by_uuid(uuid=fault_uuid) == fault
@@ -93,9 +87,9 @@ def test_get_fault_by_uuid(configuration):
 
 
 def test_get_faults_by_sys_call(configuration):
-    fault1_uuid = str(uuid.uuid4())
-    fault2_uuid = str(uuid.uuid4())
-    fault3_uuid = str(uuid.uuid4())
+    fault1_uuid = new_uuid()
+    fault2_uuid = new_uuid()
+    fault3_uuid = new_uuid()
     fault1 = ErrorFault(sys_call=SysCall.WRITE, probability=10, error_no=errno.ENOSPC)
     fault2 = ErrorFault(sys_call=SysCall.READ, probability=10, error_no=errno.ENOSPC)
     fault3 = ErrorFault(sys_call=SysCall.ALL, probability=10, error_no=errno.ENOSPC)
