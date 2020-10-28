@@ -26,7 +26,7 @@ import click
 import pyfuse3
 
 from core.faults import ErrorFault, SysCall
-from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server, DEFAULT_PORT
+from core.rest_api import start_charybdisfs_api_server, stop_charybdisfs_api_server, DEFAULT_PORT
 from core.operations import CharybdisOperations
 from core.configuration import Configuration
 from core.pyfuse3_types import wrap as pyfuse3_types_wrap
@@ -94,7 +94,7 @@ def start_charybdisfs(source: str,  # noqa: C901  # ignore "is too complex" mess
                              name="RestServerApi",
                              daemon=True)
         api_server_thread.start()
-        atexit.register(stop_charydisfs_api_server)
+        atexit.register(stop_charybdisfs_api_server)
 
     if mount:
         if source is None or target is None:

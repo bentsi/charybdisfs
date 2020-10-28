@@ -22,7 +22,7 @@ A remotely controlled fault injection file system.
     
 ##  How to run a Docker container
 
-All CharybisFS mounts will be available inside Docker container only.
+All CharybdisFS mounts will be available inside Docker container only.
 
     $ docker run -it --rm --device /dev/fuse --privileged -v $(pwd):/src charybdisfs bash
     
