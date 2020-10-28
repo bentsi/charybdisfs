@@ -13,14 +13,12 @@
 # limitations under the License.
 
 import time
-import errno
 import threading
 
 import pytest
-import requests
 
-from core.faults import ErrorFault, SysCall
-from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server
+from client import CharybdisFsClient
+from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server, DEFAULT_PORT
 
 
 @pytest.fixture(scope="module")
@@ -31,8 +29,11 @@ def start_api_server():
     stop_charydisfs_api_server()
 
 
-@pytest.mark.usefixtures("start_api_server")
-def test_add_error_fault():
-    error_fault = ErrorFault(sys_call=SysCall.WRITE, error_no=errno.ENOSPC, probability=100)
-    response = requests.post("http://127.0.0.1:8080/faults", json=error_fault.to_dict())
-    assert response.ok, f"Failed to add an {error_fault=}: {response.json()}"
+@pytest.fixture(scope="module")
+def faults_api_url():
+    return f"http://127.0.0.1:{DEFAULT_PORT}/faults"
+
+
+@pytest.fixture
+def api_client():
+    return CharybdisFsClient("127.0.0.1", DEFAULT_PORT)
