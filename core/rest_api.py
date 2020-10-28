@@ -78,5 +78,5 @@ def start_charybdisfs_api_server(port: int = DEFAULT_PORT) -> None:
     cherrypy.quickstart(root=CharybdisFsApiServer(), config=conf)
 
 
-def stop_charydisfs_api_server() -> None:
+def stop_charybdisfs_api_server() -> None:
     cherrypy.engine.exit()

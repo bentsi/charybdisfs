@@ -18,7 +18,7 @@ import threading
 import pytest
 
 from client import CharybdisFsClient
-from core.rest_api import start_charybdisfs_api_server, stop_charydisfs_api_server, DEFAULT_PORT
+from core.rest_api import start_charybdisfs_api_server, stop_charybdisfs_api_server, DEFAULT_PORT
 
 
 @pytest.fixture(scope="module")
@@ -26,7 +26,7 @@ def start_api_server():
     threading.Thread(target=start_charybdisfs_api_server, daemon=True).start()
     time.sleep(1)
     yield
-    stop_charydisfs_api_server()
+    stop_charybdisfs_api_server()
 
 
 @pytest.fixture(scope="module")
