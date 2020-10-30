@@ -240,7 +240,6 @@ class CharybdisOperations(Operations):
         self.descriptors[inode] = fd
         return FileInfo(fh=fd), entry_attrs
 
-    @faulty
     async def forget(self, inode_list: INodeList) -> None:
         for inode, nlookup in inode_list:
             if self.paths.forget_inode_lookups(inode=inode, nlookup=nlookup) and inode in self.descriptors:

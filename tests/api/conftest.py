@@ -17,8 +17,8 @@ import threading
 
 import pytest
 
-from client import CharybdisFsClient
 from core.rest_api import start_charybdisfs_api_server, stop_charybdisfs_api_server, DEFAULT_PORT
+from client import CharybdisFsClient
 
 
 @pytest.fixture(scope="module")
@@ -30,10 +30,10 @@ def start_api_server():
 
 
 @pytest.fixture(scope="module")
-def faults_api_url():
+def faults_api_url() -> str:
     return f"http://127.0.0.1:{DEFAULT_PORT}/faults"
 
 
 @pytest.fixture
-def api_client():
-    return CharybdisFsClient("127.0.0.1", DEFAULT_PORT)
+def api_client() -> CharybdisFsClient:
+    return CharybdisFsClient(host="127.0.0.1", port=DEFAULT_PORT)

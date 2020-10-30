@@ -13,14 +13,13 @@
 # limitations under the License.
 
 import sys
-import uuid
 import logging
 from typing import Optional
 
 import cherrypy
 
 from core.faults import create_fault_from_dict
-from core.configuration import Configuration
+from core.configuration import Configuration, FaultID, generate_fault_id
 
 
 DEFAULT_PORT = 8080
@@ -29,14 +28,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class CharybdisFsApiServer:
-    @staticmethod
-    def generate_new_uuid() -> str:
-        return str(uuid.uuid4())
-
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def faults(self, fault_id: Optional[str] = None):  # noqa: C901  # ignore "is too complex" message
+    def faults(self, fault_id: Optional[FaultID] = None):  # noqa: C901  # ignore "is too complex" message
         method = cherrypy.request.method
 
         sys.audit("charybdisfs.api", method, fault_id, cherrypy.request)
@@ -44,7 +39,7 @@ class CharybdisFsApiServer:
         if method == "GET":
             if fault_id is None:
                 return {"faults_ids": Configuration.get_all_faults_ids()}
-            if fault := Configuration.get_fault_by_uuid(uuid=fault_id):
+            if fault := Configuration.get_fault_by_uuid(fault_id=fault_id):
                 return {"fault_id": fault_id, "fault": fault.to_dict()}
             raise cherrypy.NotFound()
 
@@ -54,14 +49,14 @@ class CharybdisFsApiServer:
             if (fault := create_fault_from_dict(data=cherrypy.request.json)) is None:
                 raise cherrypy.HTTPError(message="Unable to create a fault from provided JSON data")
             try:
-                fault_id = self.generate_new_uuid()
-                Configuration.add_fault(uuid=fault_id, fault=fault)
+                fault_id = generate_fault_id()
+                Configuration.add_fault(fault_id=fault_id, fault=fault)
             except ValueError as exc:
                 raise cherrypy.HTTPError(message=f"Unable to add a fault {fault} with {fault_id=}: {exc}") from None
             return {"fault_id": fault_id}
 
         elif method == "DELETE":
-            if Configuration.remove_fault(uuid=fault_id):
+            if Configuration.remove_fault(fault_id=fault_id):
                 return {"fault_id": fault_id}
             raise cherrypy.NotFound()
 

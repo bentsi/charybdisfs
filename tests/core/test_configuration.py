@@ -17,10 +17,7 @@ import errno
 import pytest
 
 from core.faults import ErrorFault, SysCall
-from core.rest_api import CharybdisFsApiServer
-
-
-new_uuid = CharybdisFsApiServer.generate_new_uuid
+from core.configuration import generate_fault_id as new_uuid
 
 
 def test_add_fault(configuration):
@@ -35,54 +32,54 @@ def test_add_fault(configuration):
     fault5 = ErrorFault(sys_call=SysCall.WRITE, probability=1, error_no=errno.ENOSPC)
 
     # One fault.
-    configuration.add_fault(uuid=fault1_uuid, fault=fault1)
+    configuration.add_fault(fault_id=fault1_uuid, fault=fault1)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, }
 
     # Try add the same fault again.
     with pytest.raises(ValueError):
-        configuration.add_fault(uuid=fault1_uuid, fault=fault1)
+        configuration.add_fault(fault_id=fault1_uuid, fault=fault1)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, }
 
-    # Try to reuse uuid with another fault.
+    # Try to reuse fault ID with another fault.
     with pytest.raises(ValueError):
-        configuration.add_fault(uuid=fault1_uuid, fault=fault2)
+        configuration.add_fault(fault_id=fault1_uuid, fault=fault2)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, }
 
     # Another fault with different type.
-    configuration.add_fault(uuid=fault2_uuid, fault=fault2)
+    configuration.add_fault(fault_id=fault2_uuid, fault=fault2)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, }
 
     # SysCall.ALL which exceeds probability of some SysCall.
     with pytest.raises(ValueError):
-        configuration.add_fault(uuid=fault3_uuid, fault=fault3)
+        configuration.add_fault(fault_id=fault3_uuid, fault=fault3)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, }
 
     # Exactly 100% probability.
-    configuration.add_fault(uuid=fault3_uuid, fault=fault4)
+    configuration.add_fault(fault_id=fault3_uuid, fault=fault4)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4, }
 
     # Exceed SysCall.WRITE probability.
     with pytest.raises(ValueError):
-        configuration.add_fault(uuid=fault4_uuid, fault=fault5)
+        configuration.add_fault(fault_id=fault4_uuid, fault=fault5)
     assert configuration.syscalls_conf == {fault1_uuid: fault1, fault2_uuid: fault2, fault3_uuid: fault4, }
 
 
 def test_remove_fault(configuration):
     fault_uuid = new_uuid()
     fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.ENOSPC)
-    configuration.add_fault(uuid=fault_uuid, fault=fault)
-    assert configuration.remove_fault(uuid=fault_uuid) == fault
+    configuration.add_fault(fault_id=fault_uuid, fault=fault)
+    assert configuration.remove_fault(fault_id=fault_uuid) == fault
     assert configuration.syscalls_conf == {}
-    assert configuration.remove_fault(uuid=fault_uuid) is None
+    assert configuration.remove_fault(fault_id=fault_uuid) is None
 
 
 def test_get_fault_by_uuid(configuration):
     fault_uuid = new_uuid()
     another_fault_uuid = new_uuid()
     fault = ErrorFault(sys_call=SysCall.WRITE, probability=100, error_no=errno.ENOSPC)
-    configuration.add_fault(uuid=fault_uuid, fault=fault)
-    assert configuration.get_fault_by_uuid(uuid=fault_uuid) == fault
-    assert configuration.get_fault_by_uuid(uuid=another_fault_uuid) is None
+    configuration.add_fault(fault_id=fault_uuid, fault=fault)
+    assert configuration.get_fault_by_uuid(fault_id=fault_uuid) == fault
+    assert configuration.get_fault_by_uuid(fault_id=another_fault_uuid) is None
     assert configuration.syscalls_conf == {fault_uuid: fault}
 
 
@@ -93,9 +90,9 @@ def test_get_faults_by_sys_call(configuration):
     fault1 = ErrorFault(sys_call=SysCall.WRITE, probability=10, error_no=errno.ENOSPC)
     fault2 = ErrorFault(sys_call=SysCall.READ, probability=10, error_no=errno.ENOSPC)
     fault3 = ErrorFault(sys_call=SysCall.ALL, probability=10, error_no=errno.ENOSPC)
-    configuration.add_fault(uuid=fault1_uuid, fault=fault1)
-    configuration.add_fault(uuid=fault2_uuid, fault=fault2)
-    configuration.add_fault(uuid=fault3_uuid, fault=fault3)
+    configuration.add_fault(fault_id=fault1_uuid, fault=fault1)
+    configuration.add_fault(fault_id=fault2_uuid, fault=fault2)
+    configuration.add_fault(fault_id=fault3_uuid, fault=fault3)
     assert configuration.get_faults_by_sys_call(sys_call=SysCall.WRITE) == [fault1, fault3]
     assert configuration.get_faults_by_sys_call(sys_call=SysCall.READ) == [fault2, fault3]
     assert configuration.get_faults_by_sys_call(sys_call=SysCall.ALL) == [fault3]
