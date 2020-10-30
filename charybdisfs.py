@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import sys
-import uuid
 import errno
 import atexit
 import logging
@@ -28,7 +27,7 @@ import pyfuse3
 from core.faults import ErrorFault, SysCall
 from core.rest_api import start_charybdisfs_api_server, stop_charybdisfs_api_server, DEFAULT_PORT
 from core.operations import CharybdisOperations
-from core.configuration import Configuration
+from core.configuration import Configuration, generate_fault_id
 from core.pyfuse3_types import wrap as pyfuse3_types_wrap
 
 
@@ -37,20 +36,21 @@ AUDIT = logging.getLogger("charybdisfs.audit")
 LOG_FORMAT = ">>> %(asctime)s -%(levelname).1s- [%(processName)s:%(threadName)s] %(name)s  %(message)s"
 
 
-def sys_audit_hook(name, args):
-    if name == "charybdisfs.syscall":
-        AUDIT.debug(
-            "CharybdisFS call made: name=%s, args=%s, kwargs=%s",
-            args[0],
-            [pyfuse3_types_wrap(arg) for arg in args[1]],
-            {arg: pyfuse3_types_wrap(value) for arg, value in args[2].items()}
-        )
-    elif name == "charybdisfs.fault":
-        AUDIT.debug("CharybdisFS fault applied: %s", args[0])
-    elif name == "charybdisfs.config":
-        AUDIT.debug("CharybdisFS configuration call `%s' made with args=%s", args[0], args[1:])
-    elif name == "charybdisfs.api":
-        AUDIT.debug("CharybdisFS API %s called for fault_id=%s: %s", args[0], args[1], args[2].params)
+def sys_audit_hook(name: str, args: tuple) -> None:
+    if name.startswith("charybdisfs."):
+        if name == "charybdisfs.syscall":
+            AUDIT.debug(
+                "CharybdisFS call made: name=%s, args=%s, kwargs=%s",
+                args[0],
+                [pyfuse3_types_wrap(arg) for arg in args[1]],
+                {arg: pyfuse3_types_wrap(value) for arg, value in args[2].items()}
+            )
+        elif name == "charybdisfs.fault":
+            AUDIT.debug("CharybdisFS fault applied: %s", args[0])
+        elif name == "charybdisfs.config":
+            AUDIT.debug("CharybdisFS configuration call `%s' made with args=%s", args[0], args[1:])
+        elif name == "charybdisfs.api":
+            AUDIT.debug("CharybdisFS API %s called for fault_id=%s: %s", args[0], args[1], args[2].params)
     elif name.startswith("os."):
         AUDIT.debug("os call made: name=%s, args=%s", name[3:], args)
 
@@ -84,7 +84,7 @@ def start_charybdisfs(source: str,  # noqa: C901  # ignore "is too complex" mess
         static_enospc_probability = max(0, min(100, round(static_enospc_probability * 100)))
         LOGGER.info("Going to add ENOSPC fault for all syscalls with probability %s%%", static_enospc_probability)
         enospc_fault = ErrorFault(sys_call=SysCall.ALL, probability=static_enospc_probability, error_no=errno.ENOSPC)
-        Configuration.add_fault(uuid=str(uuid.uuid4()), fault=enospc_fault)
+        Configuration.add_fault(fault_id=generate_fault_id(), fault=enospc_fault)
         LOGGER.debug("Faults added: %s", Configuration.get_all_faults())
 
     if rest_api:

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import sys
+import uuid
 import logging
 import threading
 from typing import NewType, Dict, Optional, List
@@ -20,7 +21,7 @@ from typing import NewType, Dict, Optional, List
 from core.faults import BaseFault, SysCall
 
 
-UUID = NewType("UUID", str)
+FaultID = NewType("FaultID", str)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,16 +29,16 @@ LOGGER = logging.getLogger(__name__)
 class Configuration:
     """Global faults configuration."""
 
-    syscalls_conf: Dict[UUID, BaseFault] = {}
+    syscalls_conf: Dict[FaultID, BaseFault] = {}
     syscalls_conf_lock = threading.RLock()
 
     @classmethod
-    def add_fault(cls, uuid: UUID, fault: BaseFault) -> None:
-        sys.audit("charybdisfs.config", "add_fault", uuid, fault)
+    def add_fault(cls, fault_id: FaultID, fault: BaseFault) -> None:
+        sys.audit("charybdisfs.config", "add_fault", fault_id, fault)
 
         with cls.syscalls_conf_lock:
-            if uuid in cls.syscalls_conf:
-                raise ValueError(f"The fault with {uuid=} is set already.")
+            if fault_id in cls.syscalls_conf:
+                raise ValueError(f"The fault with {fault_id=} is set already.")
 
             if fault.sys_call == SysCall.ALL:  # we try to add wildcard syscall, so we need to check all syscalls.
                 all_sys_calls = {fault.sys_call for fault in cls.get_all_faults()}
@@ -47,22 +48,22 @@ class Configuration:
             for sys_call in all_sys_calls:
                 faults_by_sys_call = cls.get_faults_by_sys_call(sys_call=sys_call)
                 if sum(f.probability for f in faults_by_sys_call) + fault.probability > 100:
-                    raise ValueError(f"Can't add {fault=} with {uuid=} because fault probability for FS call "
+                    raise ValueError(f"Can't add {fault=} with {fault_id=} because fault probability for FS call "
                                      f"`{sys_call.value}' will exceed 100%")
 
-            cls.syscalls_conf[uuid] = fault
+            cls.syscalls_conf[fault_id] = fault
 
     @classmethod
-    def remove_fault(cls, uuid: UUID) -> Optional[BaseFault]:
-        sys.audit("charybdisfs.config", "remove_fault", uuid)
+    def remove_fault(cls, fault_id: FaultID) -> Optional[BaseFault]:
+        sys.audit("charybdisfs.config", "remove_fault", fault_id)
 
         with cls.syscalls_conf_lock:
-            return cls.syscalls_conf.pop(uuid, None)
+            return cls.syscalls_conf.pop(fault_id, None)
 
     @classmethod
-    def get_fault_by_uuid(cls, uuid: UUID) -> Optional[BaseFault]:
+    def get_fault_by_uuid(cls, fault_id: FaultID) -> Optional[BaseFault]:
         with cls.syscalls_conf_lock:
-            return cls.syscalls_conf.get(uuid)
+            return cls.syscalls_conf.get(fault_id)
 
     @classmethod
     def get_faults_by_sys_call(cls, sys_call: SysCall) -> List[BaseFault]:
@@ -76,6 +77,10 @@ class Configuration:
             return list(cls.syscalls_conf.values())
 
     @classmethod
-    def get_all_faults_ids(cls) -> List[UUID]:
+    def get_all_faults_ids(cls) -> List[FaultID]:
         with cls.syscalls_conf_lock:
             return list(cls.syscalls_conf.keys())
+
+
+def generate_fault_id() -> FaultID:
+    return FaultID(str(uuid.uuid4()))

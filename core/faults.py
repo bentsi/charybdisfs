@@ -37,7 +37,6 @@ class SysCall(AutoLowerName):
     UNKNOWN = ""
     ACCESS = auto()
     CREATE = auto()
-    FORGET = auto()
     FLUSH = auto()
     FSYNC = auto()
     FSYNCDIR = auto()
@@ -88,7 +87,7 @@ class FaultRegistryItem(NamedTuple):
 
 
 class FaultRegistry(Dict[str, FaultRegistryItem]):
-    def __missing__(self, key) -> FaultRegistryItem:
+    def __missing__(self, key: str) -> FaultRegistryItem:
         return FaultRegistryItem()
 
 
@@ -125,8 +124,8 @@ class BaseFault(abc.ABC):
             "status": self.status.value,
         }
 
-    @final
     @classmethod
+    @final
     def from_dict(cls, data: Dict[str, Any]) -> Optional[BaseFault]:
         fault_type_name = data.get("fault_type")
         fault_type, fault_args = cls._fault_registry[fault_type_name]
@@ -156,7 +155,7 @@ class BaseFault(abc.ABC):
 
 
 class LatencyFault(BaseFault):
-    def __init__(self, sys_call: SysCall, probability: int, delay: float = 0):
+    def __init__(self, sys_call: Union[str, SysCall], probability: int, delay: float = 0):
         super().__init__(sys_call=sys_call, probability=probability)
         self.delay = delay  # us - microseconds
 
@@ -165,7 +164,7 @@ class LatencyFault(BaseFault):
 
 
 class ErrorFault(BaseFault):
-    def __init__(self, sys_call: SysCall, probability: int, error_no: int):
+    def __init__(self, sys_call: Union[str, SysCall], probability: int, error_no: int):
         super().__init__(sys_call=sys_call, probability=probability)
         self.error_no = error_no
 

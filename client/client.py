@@ -14,20 +14,19 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple, NewType
+from typing import List, Tuple
 
 import requests
 
 from core.faults import BaseFault
-
-
-FaultID = NewType("FaultID", str)
+from core.rest_api import DEFAULT_PORT
+from core.configuration import FaultID
 
 
 class CharybdisFsClient:
     rest_resource = "faults"
 
-    def __init__(self, host: str, port: int, timeout: int = 10, use_https: bool = False):
+    def __init__(self, host: str, port: int = DEFAULT_PORT, timeout: int = 10, use_https: bool = False):
         self.host = host
         self.port = port
         self.timeout = timeout
